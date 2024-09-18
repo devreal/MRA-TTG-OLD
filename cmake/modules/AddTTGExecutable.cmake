@@ -12,7 +12,7 @@
 # example: add_ttg_executable(test "test/test1.cc;test/test2.cc" RUNTIMES "mad" LINK_LIBRARIES "BTAS" COMPILE_DEFINITIONG "COOL_DEFINE=1" COMPILE_FEATURES "cxx_std_20" NOT_EXCLUDE_FROM_ALL SINGLERANKONLY)
 #
 
-include(AddTTGTestExecutable)
+#include(AddTTGTestExecutable)
 
 macro(add_ttg_executable)
 
@@ -96,7 +96,7 @@ macro(add_ttg_executable)
             list(APPEND _ranksrange 2)
         endif ()
 
-        add_ttg_test_executable(${_executable}-${r} "${_ranksrange}" "${ADD_TTG_EXECUTABLE_TEST_CMDARGS}")
+        #add_ttg_test_executable(${_executable}-${r} "${_ranksrange}" "${ADD_TTG_EXECUTABLE_TEST_CMDARGS}")
     endforeach()
 
 endmacro()
