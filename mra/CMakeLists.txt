@@ -6,7 +6,7 @@ add_ttg_executable(mra-device-host
                    madness/mra-device/gl.cc
                    madness/mra-device/mra-ttg-device.cc
                    madness/mra-device/kernels.cc
-                   mratwoscale.cc
+                   madness/mratwoscale.cc
                    COMPILE_DEFINITIONS TTG_ENABLE_HOST=1
                    LINK_LIBRARIES MADworld
                    RUNTIMES "parsec")
@@ -16,7 +16,7 @@ add_ttg_executable(mra-device-host
                    madness/mra-device/gl.cc
                    madness/mra-device/mra-ttg-device.cc
                    madness/mra-device/kernels.cc
-                   mratwoscale.cc
+                   madness/mratwoscale.cc
                    COMPILE_DEFINITIONS TTG_ENABLE_HOST=1
                    LINK_LIBRARIES MADworld
                    RUNTIMES "mad")
@@ -27,7 +27,7 @@ if (TTG_HAVE_CUDA)
                      madness/mra-device/gl.cc
                      madness/mra-device/mra-ttg-device.cc
                      madness/mra-device/kernels.cu
-                     mratwoscale.cc
+                     madness/mratwoscale.cc
                      COMPILE_DEFINITIONS TTG_ENABLE_CUDA=1
                      COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
                      LINK_LIBRARIES MADworld
