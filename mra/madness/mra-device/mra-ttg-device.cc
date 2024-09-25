@@ -14,12 +14,12 @@
 
 #ifdef TTG_ENABLE_HOST
 #define TASKTYPE void
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
 #else
 #define TASKTYPE ttg::device::Task
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
 #endif
 
-
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
 
 template <mra::Dimension NDIM>
 auto make_start(const ttg::Edge<mra::Key<NDIM>, void>& ctl) {
@@ -30,7 +30,7 @@ auto make_start(const ttg::Edge<mra::Key<NDIM>, void>& ctl) {
 template<typename FnT, typename T, mra::Dimension NDIM>
 auto make_project(
   mra::Domain<NDIM>& domain,
-  ttg::Buffer<FnT>& f,
+  ttg::Buffer<FnT>& fb,
   std::size_t K,
   const mra::FunctionData<T, NDIM>& functiondata,
   const T thresh, /// should be scalar value not complex
@@ -46,6 +46,7 @@ auto make_project(
     auto result = node_type(key, K);
     tensor_type& coeffs = result.coeffs;
     auto outputs = ttg::device::forward();
+    auto& f = *fb.host_ptr();
 
     if (key.level() < initial_level(f)) {
       std::vector<mra::Key<NDIM>> bcast_keys;
@@ -61,7 +62,7 @@ auto make_project(
       coeffs.current_view() = T(1e7); // set to obviously bad value to detect incorrect use
       result.is_leaf = false;
     }
-    else if (mra::is_negligible<FnT,T,NDIM>(*f.host_ptr(), domain.template bounding_box<T>(key), mra::truncate_tol(key,thresh))) {
+    else if (mra::is_negligible<FnT,T,NDIM>(f, domain.template bounding_box<T>(key), mra::truncate_tol(key,thresh))) {
       /* zero coeffs */
       coeffs.current_view() = T(0.0);
       result.is_leaf = true;
@@ -83,12 +84,12 @@ auto make_project(
       bool is_leaf;
       auto is_leaf_scratch = ttg::make_scratch(&is_leaf, ttg::scope::Allocate);
       const std::size_t tmp_size = project_tmp_size<NDIM>(K);
-      T* tmp = new T[tmp_size]; // TODO: move this into make_scratch()
-      auto tmp_scratch = ttg::make_scratch(tmp, ttg::scope::Allocate, tmp_size);
+      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size); // TODO: move this into make_scratch()
+      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
       /* TODO: cannot do this from a function, need to move it into the main task */
 #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::select(db, gl, f, coeffs.buffer(), phibar.buffer(),
+      co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
                                    hgT.buffer(), tmp_scratch, is_leaf_scratch);
 #endif
       auto coeffs_view = coeffs.current_view();
@@ -96,7 +97,7 @@ auto make_project(
       auto hgT_view    = hgT.current_view();
       T* tmp_device = tmp_scratch.device_ptr();
       bool *is_leaf_device = is_leaf_scratch.device_ptr();
-      FnT* f_ptr   = f.current_device_ptr();
+      FnT* f_ptr   = fb.current_device_ptr();
       auto& domain = *db.current_device_ptr();
       auto  gldata = gl.current_device_ptr();
 
@@ -110,8 +111,7 @@ auto make_project(
       co_await ttg::device::wait(is_leaf_scratch);
 #endif
       result.is_leaf = is_leaf;
-      /* todo: is this safe? */
-      delete[] tmp;
+
       /**
        * END FCOEFFS HERE
        */
@@ -163,9 +163,9 @@ static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::FunctionR
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.has_children()) {
 #ifndef TTG_ENABLE_HOST
-    co_await select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children>{});
+    co_await select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
-    select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children>{});
+    select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
   }
 }
@@ -174,23 +174,24 @@ static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::FunctionR
 /// Make a composite operator that implements compression for a single function
 template <typename T, mra::Dimension NDIM>
 static auto make_compress(
+  const std::size_t K,
   const mra::FunctionData<T, NDIM>& functiondata,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionReconstructedNode<T, NDIM>>& in,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionCompressedNode<T, NDIM>>& out)
 {
   static_assert(NDIM == 3); // TODO: worth fixing?
 
-  constexpr const std::size_t num_children = mra::Key<NDIM>::num_children;
+  constexpr const std::size_t num_children = mra::Key<NDIM>::num_children();
   // creates the right number of edges for nodes to flow from send_leafs_up to compress
   // send_leafs_up will select the right input for compress
   auto create_edges = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
-    return ttg::edges((Is, ttg::Edge<mra::Key<NDIM>, mra::FunctionReconstructedNode<T, NDIM>>{})...);
+    return ttg::edges(((void)Is, ttg::Edge<mra::Key<NDIM>, mra::FunctionReconstructedNode<T, NDIM>>{})...);
   };
   auto send_to_compress_edges = create_edges(std::make_index_sequence<num_children>{});
   /* append out edge to set of edges */
   auto compress_out_edges = std::tuple_cat(send_to_compress_edges, std::make_tuple(out));
   /* use the tuple variant to handle variable number of inputs while suppressing the output tuple */
-  auto do_compress = [&](const mra::Key<NDIM>& key,
+  auto do_compress = [&, K](const mra::Key<NDIM>& key,
                          //const std::tuple<const FunctionReconstructedNodeTypes&...>& input_frns
                          const mra::FunctionReconstructedNode<T,NDIM> &in0,
                          const mra::FunctionReconstructedNode<T,NDIM> &in1,
@@ -202,16 +203,15 @@ static auto make_compress(
                          const mra::FunctionReconstructedNode<T,NDIM> &in7) -> TASKTYPE {
     //const typename ::detail::tree_types<T,K,NDIM>::compress_in_type& in,
     //typename ::detail::tree_types<T,K,NDIM>::compress_out_type& out) {
-      constexpr const auto num_children = mra::Key<NDIM>::num_children;
+      constexpr const auto num_children = mra::Key<NDIM>::num_children();
       constexpr const auto out_terminal_id = num_children;
-      auto K = in0.coeffs.dim(0);
       mra::FunctionCompressedNode<T,NDIM> result(key, K); // The eventual result
       auto& d = result.coeffs;
       // allocate even though we might not need it
       mra::FunctionReconstructedNode<T, NDIM> p(key, K);
 
       /* stores sumsq for each child and for result at the end of the kernel */
-      const std::size_t tmp_size = project_tmp_size<NDIM>(K);
+      const std::size_t tmp_size = compress_tmp_size<NDIM>(K);
       auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
       const auto& hgT = functiondata.get_hgT();
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
@@ -246,20 +246,21 @@ static auto make_compress(
       co_await ttg::device::wait(sumsqs_scratch);
 #endif
       T sumsq = 0.0;
-      T d_sumsq = sumsqs[num_children];
+      T d_sumsq = tmp[num_children];
       {  // Collect child leaf info
         //result.is_child_leaf = std::apply([](auto... ins){ return std::array{(ins.is_leaf)...}; });
         result.is_child_leaf = std::array{in0.is_leaf, in1.is_leaf, in2.is_leaf, in3.is_leaf,
                                           in4.is_leaf, in5.is_leaf, in6.is_leaf, in7.is_leaf};
-        for (std::size_t i = 0; i < num_children; ++i) {
-          sumsq += sumsqs[i]; // Accumulate sumsq from child difference coeffs
-        }
+        auto sumsqs = std::array{in0.sum, in1.sum, in2.sum, in3.sum,
+                                 in4.sum, in5.sum, in6.sum, in7.sum};
+        sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
       }
 
       // Recur up
-      std::cout << "compress key " << key << " parent " << key.parent() << " level " << key.level() << std::endl;
+      std::cout << "compress key " << key << " parent " << key.parent() << " level " << key.level()
+                << " sumsq " << sumsq << " d_sumsq " << d_sumsq << std::endl;
       if (key.level() > 0) {
-        p.sum = tmp[num_children] + sumsq; // result sumsq is last element in sumsqs
+        p.sum = d_sumsq + sumsq; // result sumsq is last element in sumsqs
 
         // will not return
 #ifndef TTG_ENABLE_HOST
@@ -299,7 +300,7 @@ auto make_reconstruct(
 {
   ttg::Edge<mra::Key<NDIM>, mra::Tensor<T,NDIM>> S("S");  // passes scaling functions down
 
-  auto do_reconstruct = [&](const mra::Key<NDIM>& key,
+  auto do_reconstruct = [&, K](const mra::Key<NDIM>& key,
                             mra::FunctionCompressedNode<T, NDIM>&& node,
                             const mra::Tensor<T, NDIM>& from_parent) -> TASKTYPE {
     const std::size_t K = from_parent.dim(0);
@@ -314,8 +315,8 @@ auto make_reconstruct(
     r_empty.is_leaf = false;
 
     /* populate the vector of r's */
-    std::array<mra::FunctionReconstructedNode<T,NDIM>, key.num_children> r_arr;
-    for (int i = 0; i < key.num_children; ++i) {
+    std::array<mra::FunctionReconstructedNode<T,NDIM>, mra::Key<NDIM>::num_children()> r_arr;
+    for (int i = 0; i < key.num_children(); ++i) {
       r_arr[i] = mra::FunctionReconstructedNode<T,NDIM>(key, K);
     }
 
@@ -327,19 +328,19 @@ auto make_reconstruct(
     };
     /* select a device */
 #ifndef TTG_ENABLE_HOST
-    co_await do_select(std::make_index_sequence<key.num_children>{});
+    co_await do_select(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
 
     // helper lambda to pick apart the std::array
     auto assemble_tensor_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
       return std::array{(r_arr[Is].coeffs.current_view().data())...};
     };
-    auto r_ptrs = assemble_tensor_ptrs(std::make_index_sequence<key.num_children>{});
+    auto r_ptrs = assemble_tensor_ptrs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     auto node_view = node.coeffs.current_view();
     auto hg_view = hg.current_view();
     auto from_parent_view = from_parent.current_view();
     submit_reconstruct_kernel(key, node_view, hg_view, from_parent_view,
-                              r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
+                              r_ptrs, tmp_scratch.device_ptr(), K, ttg::device::current_stream());
 
     // forward() returns a vector that we can push into
 #ifndef TTG_ENABLE_HOST
@@ -390,7 +391,7 @@ auto make_reconstruct(
 static std::mutex printer_guard;
 template <typename keyT, typename valueT>
 auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const bool doprint=true) {
-  auto func = [str,doprint](const keyT& key, const auto& value, auto& out) {
+  auto func = [str,doprint](const keyT& key, const valueT& value) {
     if (doprint) {
       std::lock_guard<std::mutex> obolus(printer_guard);
       std::cout << str << " (" << key << "," << value << ")" << std::endl;
@@ -406,7 +407,7 @@ void test(std::size_t K) {
   D.set_cube(-6.0,6.0);
 
   srand48(5551212); // for reproducible results
-  //for (auto i : range(10000)) drand48(); // warmup generator
+  for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionReconstructedNode<T, NDIM>> project_result, reconstruct_result;
@@ -425,7 +426,7 @@ void test(std::size_t K) {
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(&gaussian);
   auto start = make_start(project_control);
   auto project = make_project(D, gauss_buffer, K, functiondata, T(1e-6), project_control, project_result);
-  auto compress = make_compress(functiondata, project_result, compress_result);
+  auto compress = make_compress(K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(K, functiondata, compress_result, reconstruct_result);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
@@ -460,7 +461,7 @@ int main(int argc, char **argv) {
   ttg::initialize(argc, argv);
   mra::GLinitialize();
 
-  test<double, 3>(10);
+  test<double, 3>(3);
 
   ttg::finalize();
 }
