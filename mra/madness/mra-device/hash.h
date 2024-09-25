@@ -9,13 +9,13 @@ namespace mra {
     namespace detail {
         SCOPE static inline uint64_t rot(uint64_t x)
         {
-            constexpr const uint64_t n = 27;
+            const uint64_t n = 27;
             return (x<<n) | (x>>(64-n));
         }
 
         SCOPE static inline uint32_t rot(uint32_t x)
         {
-            constexpr const uint32_t n = 13;
+            const uint32_t n = 13;
             return (x<<n) | (x>>(32-n));
         }
 
@@ -46,13 +46,13 @@ namespace mra {
 
     /// Multiplicative hash with rotation to mix bits (std::hash does not) - empirically good enuf for keys
     SCOPE static inline uint64_t mulhash(uint64_t hash, Translation data) {
-        constexpr const uint64_t m = 11400714819323198393ul;
+        static const uint64_t m = 11400714819323198393ul;
         return detail::rot(hash)^(data*m);
     }
 
     /// Multiplicative hash with rotation to mix bits (std::hash does not) - empirically good enuf for keys
     SCOPE static inline uint32_t mulhash(uint32_t hash, Translation data) {
-        constexpr const uint32_t m = 2654435761u;
+        static const uint32_t m = 2654435761u;
         return detail::rot(hash)^(data*m);
     }
 
