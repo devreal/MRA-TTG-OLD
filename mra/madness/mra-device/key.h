@@ -23,12 +23,13 @@ namespace mra {
         /// Refreshes the hash value.  Note that the default std::hash does not mix enough
         SCOPE HashValue rehash() const {
             HashValue hashvalue = n;
-            for (Dimension d=0; d<NDIM; d++) mulhash(hashvalue,l[d]);
+            //for (Dimension d=0; d<NDIM; d++) mulhash(hashvalue,l[d]);
+            for (Dimension d=0; d<NDIM; d++) hashvalue = (hashvalue<<7) | l[d];
             return hashvalue;
         }
 
     public:
-        constexpr static size_t num_children = (1ul<<NDIM);
+        static constexpr size_t num_children() { return (1ul<<NDIM); }
 
         /// Default constructor is deliberately default so that is POD
         SCOPE Key() = default;
@@ -102,7 +103,7 @@ namespace mra {
             assert(n<MAX_LEVEL);
             std::array<Translation,NDIM> l = this->l;
             for (auto& x : l) x = 2*x + 1;
-            return Key<NDIM>(2*n, l);
+            return Key<NDIM>(n+1, l);
         }
 
         /// Used by iterator to increment child translation
@@ -123,10 +124,10 @@ namespace mra {
         /// Return the Key of the child at position idx \in [0, 1<<NDIM)
         SCOPE Key<NDIM> child_at(size_t idx) {
             assert(n<MAX_LEVEL);
-            assert(idx<num_children);
+            assert(idx<num_children());
             std::array<Translation,NDIM> l = this->l;
-            for (Dimension d = 0; d < NDIM; ++d) l[d] = 2*l[d] + (idx & (1<<d)) ? 1 : 0;
-            return Key<NDIM>(2*n, l);
+            for (Dimension d = 0; d < NDIM; ++d) l[d] = 2*l[d] + ((idx & (1<<d)) ? 1 : 0);
+            return Key<NDIM>(n+1, l);
         }
     };
     template <> inline SCOPE Key<1> Key<1>::parent(Level generation) const {
