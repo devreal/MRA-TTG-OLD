@@ -176,7 +176,7 @@ SCOPE
 void mTxmq(std::size_t dimi, std::size_t dimj, std::size_t dimk,
            cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
   if (ldb == -1) ldb=dimj;
-  printf("mTxmq dimi %lu dimj %lu dimk %lu\n", dimi, dimj, dimk);
+  // printf("mTxmq dimi %lu dimj %lu dimk %lu\n", dimi, dimj, dimk);
   /* trivial 2D implementation for devices */
   if (threadIdx.z == 0) {
     for (std::size_t i = threadIdx.y; i < dimi; i += blockDim.y) {
