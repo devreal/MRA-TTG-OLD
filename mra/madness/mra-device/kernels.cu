@@ -176,7 +176,6 @@ SCOPE
 void mTxmq(std::size_t dimi, std::size_t dimj, std::size_t dimk,
            cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
   if (ldb == -1) ldb=dimj;
-  printf("mTxmq dimi %lu dimj %lu dimk %lu\n", dimi, dimj, dimk);
   /* trivial 2D implementation for devices */
   if (threadIdx.z == 0) {
     for (std::size_t i = threadIdx.y; i < dimi; i += blockDim.y) {
@@ -267,8 +266,6 @@ GLOBALSCOPE void fcoeffs_kernel1(
     Key<NDIM> child = key.child_at(bid);
     auto kl = key.translation();
     auto cl = child.translation();
-    //printf("fcoeffs Key (%d, [%d, %d, %d]) child %d (%d, [%d, %d, %d])\n",
-    //        key.level(), kl[0], kl[1], kl[2], bid, child.level(), cl[0], cl[1], cl[2]);
     child_values = 0.0; // TODO: needed?
     fcube(D, gldata, f, child, thresh, child_values, K, x, x_vec);
     r = 0.0;
@@ -441,13 +438,8 @@ GLOBALSCOPE void compress_kernel(
       if (is_t0) sumsqs[bid] = 0.0;
       SYNCTHREADS(); // wait for thread 0 to set sums to 0
       auto child_slice = get_child_slice<NDIM>(key, K, bid);
-      printf("compress child_slice %d [[%ld %ld %ld], [%ld %ld %ld], [%ld %ld %ld]]\n", bid,
-             child_slice[0].start, child_slice[0].finish, child_slice[0].stride,
-             child_slice[1].start, child_slice[1].finish, child_slice[1].stride,
-             child_slice[2].start, child_slice[2].finish, child_slice[2].stride);
       const TensorView<T, NDIM> in(in_ptrs[bid], K);
       sumabssq(in, &sumsqs[bid]);
-      printf("compress %d sumsq %f\n", bid, sumsqs[bid]);
       s(child_slice) = in;
     }
     //filter<T,K,NDIM>(s,d);  // Apply twoscale transformation=
