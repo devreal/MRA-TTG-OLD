@@ -246,7 +246,8 @@ static auto make_compress(
       co_await ttg::device::wait(sumsqs_scratch);
 #endif
       T sumsq = 0.0;
-      T d_sumsq = tmp[num_children];
+      T d_sumsq = sumsqs[num_children];
+      assert(d_sumsq >= 0.0);
       {  // Collect child leaf info
         //result.is_child_leaf = std::apply([](auto... ins){ return std::array{(ins.is_leaf)...}; });
         result.is_child_leaf = std::array{in0.is_leaf, in1.is_leaf, in2.is_leaf, in3.is_leaf,
