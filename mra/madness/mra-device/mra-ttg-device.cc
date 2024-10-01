@@ -215,8 +215,8 @@ static auto make_compress(
       auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
       const auto& hgT = functiondata.get_hgT();
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-      T sumsqs[num_children+1];
-      auto sumsqs_scratch = ttg::make_scratch(sumsqs, ttg::scope::Allocate, num_children+1);
+      T d_sumsq;
+      auto d_sumsq_scratch = ttg::make_scratch(&d_sumsq, ttg::scope::Allocate, 1);
 #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(p.coeffs.buffer(), d.buffer(), hgT.buffer(),
                                    tmp_scratch, sumsqs_scratch,
@@ -238,16 +238,14 @@ static auto make_compress(
       auto hgT_view = hgT.current_view();
 
       submit_compress_kernel(key, coeffs_view, rcoeffs_view, hgT_view,
-                            tmp_scratch.device_ptr(), sumsqs_scratch.device_ptr(), input_ptrs,
+                            tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
                             ttg::device::current_stream());
 
       /* wait for kernel and transfer sums back */
 #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::wait(sumsqs_scratch);
+      co_await ttg::device::wait(d_sumsq_scratch);
 #endif
       T sumsq = 0.0;
-      T d_sumsq = sumsqs[num_children];
-      assert(d_sumsq >= 0.0);
       {  // Collect child leaf info
         //result.is_child_leaf = std::apply([](auto... ins){ return std::array{(ins.is_leaf)...}; });
         result.is_child_leaf = std::array{in0.is_leaf, in1.is_leaf, in2.is_leaf, in3.is_leaf,
