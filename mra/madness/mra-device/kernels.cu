@@ -412,7 +412,7 @@ GLOBALSCOPE void compress_kernel(
   T* result_ptr,
   const T* hgT_ptr,
   T* tmp,
-  T* sumsqs, // sumsqs[0]: sum over sumsqs of p; sumsqs[1]: sumsq of result
+  T* d_sumsq,
   const std::array<const T*, Key<NDIM>::num_children()> in_ptrs,
   std::size_t K)
 {
@@ -435,11 +435,9 @@ GLOBALSCOPE void compress_kernel(
     p = 0.0;
 
     for (int bid = blockIdx.x; bid < Key<NDIM>::num_children(); bid += gridDim.x) {
-      if (is_t0) sumsqs[bid] = 0.0;
       SYNCTHREADS(); // wait for thread 0 to set sums to 0
       auto child_slice = get_child_slice<NDIM>(key, K, bid);
       const TensorView<T, NDIM> in(in_ptrs[bid], K);
-      sumabssq(in, &sumsqs[bid]);
       s(child_slice) = in;
     }
     //filter<T,K,NDIM>(s,d);  // Apply twoscale transformation=
@@ -449,7 +447,7 @@ GLOBALSCOPE void compress_kernel(
       p = d(child_slice);
       d(child_slice) = 0.0;
     }
-    sumabssq(d, &sumsqs[Key<NDIM>::num_children()]); // put result sumsq at the end
+    sumabssq(d, d_sumsq);
   }
 }
 
@@ -460,7 +458,7 @@ void submit_compress_kernel(
   TensorView<T, NDIM>& result_view,
   const TensorView<T, 2>& hgT_view,
   T* tmp,
-  T* sumsqs,
+  T* d_sumsq,
   const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
   cudaStream_t stream)
 {
@@ -468,7 +466,7 @@ void submit_compress_kernel(
   Dim3 thread_dims = Dim3(K, 1, 1); // figure out how to consider register usage
 
   CALL_KERNEL(compress_kernel, 1, thread_dims, 0, stream)(
-    key, p_view.data(), result_view.data(), hgT_view.data(), tmp, sumsqs, in_ptrs, K);
+    key, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs, K);
   checkSubmit();
 }
 
@@ -481,7 +479,7 @@ void submit_compress_kernel<double, 3>(
   TensorView<double, 3>& result_view,
   const TensorView<double, 2>& hgT_view,
   double* tmp,
-  double* sumsqs,
+  double* d_sumsq,
   const std::array<const double*, Key<3>::num_children()>& in_ptrs,
   cudaStream_t stream);
 
