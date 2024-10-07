@@ -35,10 +35,17 @@ using Dim3 = mra::detail::dim3;
   if (cudaPeekAtLastError() != cudaSuccess)                         \
     std::cout << "kernel submission failed at " << __LINE__ << ": " \
     << cudaGetErrorString(cudaPeekAtLastError()) << std::endl;
-#define CALL_KERNEL(name, ...) name<<<__VA_ARGS__>>>
+#define CALL_KERNEL(name, block, thread, shared, stream, args) \
+  name<<<block, thread, shared, stream>>> args
 #else  // __CUDACC__
 #define checkSubmit()
-#define CALL_KERNEL(name, ...) name
+#define CALL_KERNEL(name, blocks, thread, shared, stream, args) do { \
+    blockIdx = {0, 0, 0};                       \
+    for (std::size_t i = 0; i < blocks; ++i) {  \
+      blockIdx.x = i;                           \
+      name args;                                \
+    }                                           \
+  } while (0)
 #endif // __CUDACC__
 
 #endif // MRA_DEVICE_UTIL_H

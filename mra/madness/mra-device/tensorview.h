@@ -11,57 +11,50 @@
 namespace mra {
 
 
+  namespace detail {
+    template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
+    SCOPE void foreach_idx_impl(const TensorViewT& t, Fn&& fn, Args... args)
+    {
+#ifdef __CUDA_ARCH__
+      /* distribute the last three dimensions across the z, y, x dimension of the block */
+      if constexpr (I == NDIM-3) {
+        for (std::size_t i = threadIdx.z; i < t.dim(I); i += blockDim.z) {
+          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+        }
+      } else if constexpr (I == NDIM-2) {
+        for (std::size_t i = threadIdx.y; i < t.dim(I); i += blockDim.y) {
+          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+        }
+      } else if constexpr (I == NDIM-1) {
+        for (std::size_t i = threadIdx.x; i < t.dim(I); i += blockDim.x) {
+          fn(args..., i);
+        }
+      } else {
+        /* general index (NDIM > 3)*/
+        for (std::size_t i = 0; i < t.dim(I); ++i) {
+          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+        }
+      }
+#else  // __CUDA_ARCH__
+      if constexpr (I < NDIM-1) {
+        for (std::size_t i = 0; i < t.dim(I); ++i) {
+          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+        }
+      } else {
+        for (std::size_t i = 0; i < t.dim(I); ++i) {
+          fn(args..., i);
+        }
+      }
+#endif // __CUDA_ARCH__
+    }
+  } // namespace detail
+
   template<class TensorViewT, typename Fn>
   requires(TensorViewT::is_tensor())
   SCOPE void foreach_idx(const TensorViewT& t, Fn&& fn) {
-    constexpr Dimension NDIM = TensorViewT::ndim();
-    static_assert(NDIM <= 3, "Missing implementation of foreach_idx for NDIM>3");
-#ifdef __CUDA_ARCH__
-    /* let's start simple: iterate sequentially over all but the fastest dimension and use threads in the last
-      *                     dimension to do the assignment in parallel. This should be revisited later.*/
-    static_assert(NDIM <= 3, "Missing implementation of operator= for NDIM>3");
-    if constexpr(NDIM == 3) {
-      for (std::size_t i = threadIdx.z; i < t.dim(0); i += blockDim.z) {
-        for (std::size_t j = threadIdx.y; j < t.dim(1); j += blockDim.y) {
-          for (std::size_t k = threadIdx.x; k < t.dim(2); k += blockDim.x) {
-            fn(i, j, k);
-          }
-        }
-      }
-    } else if constexpr (NDIM == 2) {
-      for (std::size_t i = threadIdx.z*blockDim.y + threadIdx.y; i < t.dim(0); i += blockDim.z*blockDim.y) {
-        for (std::size_t j = threadIdx.x; j < t.dim(1); j += blockDim.x) {
-          fn(i, j);
-        }
-      }
-    } else if constexpr(NDIM == 1) {
-      int tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-      for (size_t i = tid; i < t.dim(0); i += blockDim.x*blockDim.y*blockDim.z) {
-          fn(i);
-      }
-    }
-    SYNCTHREADS();
-#else  // __CUDA_ARCH__
-    if constexpr(NDIM ==3) {
-      for (int i = 0; i < t.dim(0); ++i) {
-        for (int j = 0; j < t.dim(1); ++j) {
-          for (int k = 0; k < t.dim(2); ++k) {
-            fn(i, j, k);
-          }
-        }
-      }
-    } else if constexpr (NDIM ==2) {
-      for (int i = 0; i < t.dim(0); ++i) {
-        for (int j = 0; j < t.dim(1); ++j) {
-          fn(i, j);
-        }
-      }
-    } else if constexpr (NDIM ==1) {
-      for (int i = 0; i < t.dim(0); ++i) {
-        fn(i);
-      }
-    }
-#endif // __CUDA_ARCH__
+    constexpr mra::Dimension NDIM = TensorViewT::ndim();
+    //std::cout << "foreach_idx NDIM " << NDIM << " ";
+    detail::foreach_idx_impl<NDIM, 0>(t, std::forward<Fn>(fn));
   }
 
   namespace detail {
@@ -357,12 +350,15 @@ namespace mra {
     , m_ptr(ptr)
     { }
 
-    template<typename... Dims>
-    SCOPE explicit TensorView(const T *ptr, Dims... dims)
+    template<typename S, typename... Dims>
+    requires(!std::is_const_v<T> && std::is_same_v<S, T>)
+    SCOPE explicit TensorView(const S *ptr, Dims... dims)
     : TensorView(const_cast<T*>(ptr), std::forward<Dims>(dims)...) // remove const, we store a non-const pointer internally
     { }
 
-    SCOPE explicit TensorView(const T *ptr, const dims_array_t& dims)
+    template<typename S>
+    requires(!std::is_const_v<T> && std::is_same_v<S, T>)
+    SCOPE explicit TensorView(const S *ptr, const dims_array_t& dims)
     : TensorView(const_cast<T*>(ptr), dims) // remove const, we store a non-const pointer internally
     { }
 

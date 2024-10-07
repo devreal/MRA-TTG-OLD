@@ -8,6 +8,7 @@
 #include "kernels.h"
 #include "functions.h"
 #include "util.h"
+#include "functionfunctor.h"
 
 template<typename T>
 struct type_printer;
@@ -45,6 +46,9 @@ SCOPE void make_quadrature_pts(
 }
 
 
+#if 0
+// TODO: REMOVE
+
 //namespace detail {
   template <class functorT> using initial_level_t =
       decltype(std::declval<const functorT>().initial_level());
@@ -68,6 +72,7 @@ SCOPE bool is_negligible(
     if constexpr (/*detail::*/supports_is_negligible<functionT,pairT>()) return f.is_negligible(box, thresh);
     else return false;
 }
+#endif // 0
 
 /// Make outer product of quadrature points for vectorized algorithms
 template<typename T>
@@ -229,20 +234,19 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 }
 
 template<typename Fn, typename T, Dimension NDIM>
-GLOBALSCOPE void fcoeffs_kernel1(
+DEVSCOPE void fcoeffs_kernel_impl(
   const Domain<NDIM>& D,
   const T* gldata,
   const Fn& f,
   Key<NDIM> key,
+  std::size_t K,
   T* tmp,
   const T* phibar_ptr,
   T* coeffs_ptr,
   const T* hgT_ptr,
   bool *is_leaf,
-  std::size_t K,
   T thresh)
 {
-  int blockid = blockIdx.x;
   bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   const std::size_t K2NDIM = std::pow(K, NDIM);
   const std::size_t TWOK2NDIM = std::pow(2*K, NDIM);
@@ -258,102 +262,142 @@ GLOBALSCOPE void fcoeffs_kernel1(
     x_vec        = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM], NDIM, K2NDIM);
     x            = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM + (NDIM*K2NDIM)], NDIM, K);
     phibar       = TensorView<T, 2   >(phibar_ptr, K, K);
+    coeffs       = TensorView<T, NDIM>(coeffs_ptr, K);
   }
   SYNCTHREADS();
 
-  /* compute one child per block */
-  for (int bid = blockid; bid < key.num_children(); bid += gridDim.x) {
-    Key<NDIM> child = key.child_at(bid);
-    auto kl = key.translation();
-    auto cl = child.translation();
-    child_values = 0.0; // TODO: needed?
-    fcube(D, gldata, f, child, thresh, child_values, K, x, x_vec);
+  /* check for our function */
+  if ((key.level() < initial_level(f))) {
+    coeffs = T(1e7); // set to obviously bad value to detect incorrect use
+    *is_leaf = false;
+  }
+  if (is_negligible<Fn,T,NDIM>(f, D.template bounding_box<T>(key), mra::truncate_tol(key,thresh))) {
+    /* zero coeffs */
+    coeffs = T(0.0);
+    *is_leaf = true;
+  } else {
+
+    /* compute one child */
+    for (int bid = 0; bid < key.num_children(); bid++) {
+      Key<NDIM> child = key.child_at(bid);
+      auto kl = key.translation();
+      auto cl = child.translation();
+      child_values = 0.0; // TODO: needed?
+      fcube(D, gldata, f, child, thresh, child_values, K, x, x_vec);
+      r = 0.0;
+      transform(child_values, phibar, r, workspace);
+      auto child_slice = get_child_slice<NDIM>(key, K, bid);
+      values(child_slice) = r;
+    }
+
+    /* reallocate some of the tensorviews */
+    if (is_t0) {
+      r          = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
+      workspace  = TensorView<T, NDIM>(&tmp[2*TWOK2NDIM], 2*K);
+      hgT        = TensorView<T, 2>(hgT_ptr, 2*K, 2*K);
+    }
+    SYNCTHREADS();
+    T fac = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5),T(NDIM*(1+key.level()))));
     r = 0.0;
-    transform(child_values, phibar, r, workspace);
-    auto child_slice = get_child_slice<NDIM>(key, K, bid);
-    values(child_slice) = r;
-  }
 
-  /* reallocate some of the tensorviews */
-  if (is_t0) {
-    r          = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
-    workspace  = TensorView<T, NDIM>(&tmp[2*TWOK2NDIM], 2*K);
-    hgT        = TensorView<T, 2>(hgT_ptr, 2*K, 2*K);
-    coeffs     = TensorView<T, NDIM>(coeffs_ptr, K);
-  }
-  SYNCTHREADS();
-  r = 0.0;
+    values *= fac;
+    // Inlined: filter<T,K,NDIM>(values,r);
+    transform<NDIM>(values, hgT, r, workspace);
 
-  T fac = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5),T(NDIM*(1+key.level()))));
-  values *= fac;
-  // Inlined: filter<T,K,NDIM>(values,r);
-  transform<NDIM>(values, hgT, r, workspace);
-
-  auto child_slice = get_child_slice<NDIM>(key, K, 0);
-  auto r_slice = r(child_slice);
-  coeffs = r_slice; // extract sum coeffs
-  r_slice = 0.0; // zero sum coeffs so can easily compute norm of difference coeffs
-  /* TensorView assignment synchronizes */
-  T norm = mra::normf(r);
-  if (is_t0) {
-    /* TODO: compute the norm across threads */
-    *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
+    auto child_slice = get_child_slice<NDIM>(key, K, 0);
+    auto r_slice = r(child_slice);
+    coeffs = r_slice; // extract sum coeffs
+    r_slice = 0.0; // zero sum coeffs so can easily compute norm of difference coeffs
+    /* TensorView assignment synchronizes */
+    T norm = mra::normf(r);
+    if (is_t0) {
+      *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
+      //if (!*is_leaf) {
+      //  std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
+      //}
+    }
   }
 }
 
-#if 0
-template<typename T, Dimension NDIM>
-GLOBALSCOPE void fcoeffs_kernel2(
+template<typename Fn, typename T, Dimension NDIM>
+GLOBALSCOPE void fcoeffs_kernel(
   const Domain<NDIM>& D,
+  const T* gldata,
+  const Fn* fns,
   Key<NDIM> key,
+  std::size_t N,
+  std::size_t K,
+  T* tmp,
+  const T* phibar_ptr,
   T* coeffs_ptr,
   const T* hgT_ptr,
-  T* tmp,
   bool *is_leaf,
-  std::size_t K,
   T thresh)
 {
-  const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-  const std::size_t    K2NDIM = std::pow(K, NDIM);
-  const std::size_t TWOK2NDIM = std::pow(2*K, NDIM);
-  /* reconstruct tensor views from pointers
-   * make sure we have the values at the same offset (0) as in kernel 1 */
-  SHARED TensorView<T, NDIM> values, r, workspace, coeffs;
-  SHARED TensorView<T, 2> hgT;
-  if (is_t0) {
-    values     = TensorView<T, NDIM>(&tmp[0], 2*K);
-    r          = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
-    workspace  = TensorView<T, NDIM>(&tmp[2*TWOK2NDIM], 2*K);
-    hgT        = TensorView<T, 2>(hgT_ptr, 2*K, 2*K);
-    coeffs     = TensorView<T, NDIM>(coeffs_ptr, K);
-  }
-  SYNCTHREADS();
-  r = 0.0;
+  const size_t K2NDIM = std::pow(K,NDIM);
+  /* adjust pointers for the function of each block */
+  int blockid = blockIdx.x;
 
-  T fac = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5),T(NDIM*(1+key.level()))));
-  values *= fac;
-  // Inlined: filter<T,K,NDIM>(values,r);
-  transform<NDIM>(values, hgT, r, workspace);
-
-  auto child_slice = get_child_slice<NDIM>(key, K, 0);
-  auto r_slice = r(child_slice);
-  coeffs = r_slice; // extract sum coeffs
-  r_slice = 0.0; // zero sum coeffs so can easily compute norm of difference coeffs
-  /* TensorView assignment synchronizes */
-  T norm = mra::normf(r);
-  if (is_t0) {
-    /* TODO: compute the norm across threads */
-    *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
-  }
+  fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K, &tmp[(project_tmp_size<NDIM>(K)*blockid)],
+                      phibar_ptr, coeffs_ptr+(blockid*K2NDIM), hgT_ptr, &is_leaf[blockid], thresh);
 }
-#endif // 0
 
 template<typename Fn, typename T, Dimension NDIM>
 void submit_fcoeffs_kernel(
   const Domain<NDIM>& D,
   const T* gldata,
-  const Fn& fn,
+  const Fn* fns,
   const Key<NDIM>& key,
+  std::size_t N,
+  std::size_t K,
+  TensorView<T, NDIM+1>& coeffs_view,
+  const TensorView<T, 2>& phibar_view,
+  const TensorView<T, 2>& hgT_view,
+  T* tmp,
+  bool* is_leaf_scratch,
+  T thresh,
+  cudaStream_t stream)
+{
+  /**
+   * Launch the kernel with KxK threads in each of the N blocks.
+   * Computation on functions is embarassingly parallel and no
+   * synchronization is required.
+   */
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+  /* launch one block per child */
+  CALL_KERNEL(fcoeffs_kernel, N, thread_dims, 0, stream,
+    (D, gldata, fns, key, N, K, tmp, phibar_view.data(),
+    coeffs_view.data(), hgT_view.data(),
+    is_leaf_scratch, thresh));
+  checkSubmit();
+}
+
+
+template<typename Fn, typename T, Dimension NDIM>
+GLOBALSCOPE void fcoeffs_kernel(
+  const Domain<NDIM>& D,
+  const T* gldata,
+  const Fn& fn,
+  Key<NDIM> key,
+  std::size_t K,
+  T* tmp,
+  const T* phibar_ptr,
+  T* coeffs_ptr,
+  const T* hgT_ptr,
+  bool *is_leaf,
+  T thresh)
+{
+  fcoeffs_kernel_impl(D, gldata, fn, key, K, tmp,
+                      phibar_ptr, coeffs_ptr, hgT_ptr, is_leaf, thresh);
+}
+
+template<typename Fn, typename T, Dimension NDIM>
+void submit_fcoeffs_kernel(
+  const Domain<NDIM>& D,
+  const T* gldata,
+  const Fn& fns,
+  const Key<NDIM>& key,
+  std::size_t K,
   TensorView<T, NDIM>& coeffs_view,
   const TensorView<T, 2>& phibar_view,
   const TensorView<T, 2>& hgT_view,
@@ -363,20 +407,16 @@ void submit_fcoeffs_kernel(
   cudaStream_t stream)
 {
   /**
-   * Launch two kernels: one with multiple blocks, one with a single block.
-   * We use two kernels here because of the synchronization that is required in between
-   * (i.e., we have to wait for all children to be computed on before moving to the second part)
-   * TODO: We could batch these together into a graph that is launched at once.
-   *       Alternatively, we could call the second kernel from the first
+   * Launch the kernel with KxK threads in each of the N blocks.
+   * Computation on functions is embarassingly parallel and no
+   * synchronization is required.
    */
-
-  const std::size_t K = coeffs_view.dim(0);
-  Dim3 thread_dims = Dim3(K, 1, 1); // figure out how to consider register usage
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
   /* launch one block per child */
-  CALL_KERNEL(fcoeffs_kernel1, 1, thread_dims, 0, stream)(
-    D, gldata, fn, key, tmp, phibar_view.data(),
+  CALL_KERNEL(fcoeffs_kernel, 1, thread_dims, 0, stream,
+    (D, gldata, fns, key, K, tmp, phibar_view.data(),
     coeffs_view.data(), hgT_view.data(),
-    is_leaf_scratch, K, thresh);
+    is_leaf_scratch, thresh));
   checkSubmit();
 }
 
@@ -388,8 +428,26 @@ void submit_fcoeffs_kernel(
  void submit_fcoeffs_kernel<Gaussian<double, 3>, double, 3>(
    const Domain<3>& D,
    const double* gldata,
-   const Gaussian<double, 3>& fn,
+   const Gaussian<double, 3>* fns,
    const Key<3>& key,
+   std::size_t N,
+   std::size_t K,
+   TensorView<double, 3+1>& coeffs_view,
+   const TensorView<double, 2>& phibar_view,
+   const TensorView<double, 2>& hgT_view,
+   double* tmp,
+   bool* is_leaf_scratch,
+   double thresh,
+   cudaStream_t stream);
+
+
+ template
+ void submit_fcoeffs_kernel<Gaussian<double, 3>, double, 3>(
+   const Domain<3>& D,
+   const double* gldata,
+   const Gaussian<double, 3>& fns,
+   const Key<3>& key,
+   std::size_t K,
    TensorView<double, 3>& coeffs_view,
    const TensorView<double, 2>& phibar_view,
    const TensorView<double, 2>& hgT_view,
@@ -400,21 +458,20 @@ void submit_fcoeffs_kernel(
 
 
 
-
 /**
  * Compress kernels
  */
 
 template<typename T, Dimension NDIM>
-GLOBALSCOPE void compress_kernel(
+DEVSCOPE void compress_kernel_impl(
   Key<NDIM> key,
+  std::size_t K,
   T* p_ptr,
   T* result_ptr,
   const T* hgT_ptr,
   T* tmp,
   T* d_sumsq,
-  const std::array<const T*, Key<NDIM>::num_children()> in_ptrs,
-  std::size_t K)
+  const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs)
 {
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   {   // Collect child coeffs and leaf info
@@ -434,13 +491,12 @@ GLOBALSCOPE void compress_kernel(
     d = 0.0;
     p = 0.0;
 
-    for (int bid = blockIdx.x; bid < Key<NDIM>::num_children(); bid += gridDim.x) {
-      SYNCTHREADS(); // wait for thread 0 to set sums to 0
-      auto child_slice = get_child_slice<NDIM>(key, K, bid);
-      const TensorView<T, NDIM> in(in_ptrs[bid], K);
+    for (int i = 0; i < Key<NDIM>::num_children(); ++i) {
+      auto child_slice = get_child_slice<NDIM>(key, K, i);
+      const TensorView<T, NDIM> in(in_ptrs[i], K);
       s(child_slice) = in;
     }
-    //filter<T,K,NDIM>(s,d);  // Apply twoscale transformation=
+    //filter<T,K,NDIM>(s,d);  // Apply twoscale transformation
     transform<NDIM>(s, hgT, d, workspace);
     if (key.level() > 0) {
       auto child_slice = get_child_slice<NDIM>(key, K, 0);
@@ -452,8 +508,77 @@ GLOBALSCOPE void compress_kernel(
 }
 
 template<typename T, Dimension NDIM>
+GLOBALSCOPE void compress_kernel(
+  Key<NDIM> key,
+  std::size_t N,
+  std::size_t K,
+  T* p_ptr,
+  T* result_ptr,
+  const T* hgT_ptr,
+  T* tmp,
+  T* d_sumsq,
+  const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
+{
+  const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+  int blockid = blockIdx.x;
+  const size_t K2NDIM    = std::pow(  K,NDIM);
+  const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+  SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
+  if (is_t0) {
+    for (std::size_t i = 0; i < Key<NDIM>::num_children(); ++i) {
+      block_in_ptrs[i] = &in_ptrs[i][K2NDIM*blockid];
+    }
+  }
+  /* no need to sync threads here */
+  compress_kernel_impl(key, K, &p_ptr[K2NDIM*blockid], &result_ptr[TWOK2NDIM*blockid],
+                       hgT_ptr, &tmp[compress_tmp_size<NDIM>(K)*blockid], &d_sumsq[blockid],
+                       block_in_ptrs);
+}
+
+template<typename T, Dimension NDIM>
 void submit_compress_kernel(
   const Key<NDIM>& key,
+  std::size_t N,
+  std::size_t K,
+  TensorView<T, NDIM+1>& p_view,
+  TensorView<T, NDIM+1>& result_view,
+  const TensorView<T, 2>& hgT_view,
+  T* tmp,
+  T* d_sumsq,
+  const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
+  cudaStream_t stream)
+{
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+
+  CALL_KERNEL(compress_kernel, N, thread_dims, 0, stream,
+    (key, N, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
+  checkSubmit();
+}
+
+
+template<typename T, Dimension NDIM>
+GLOBALSCOPE void compress_kernel(
+  Key<NDIM> key,
+  std::size_t K,
+  T* p_ptr,
+  T* result_ptr,
+  const T* hgT_ptr,
+  T* tmp,
+  T* d_sumsq,
+  const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
+{
+  const size_t K2NDIM    = std::pow(  K,NDIM);
+  const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+  /* no need to sync threads here */
+  compress_kernel_impl(key, K, p_ptr, result_ptr,
+                       hgT_ptr, tmp, d_sumsq,
+                       in_ptrs);
+}
+
+template<typename T, Dimension NDIM>
+void submit_compress_kernel(
+  const Key<NDIM>& key,
+  std::size_t K,
   TensorView<T, NDIM>& p_view,
   TensorView<T, NDIM>& result_view,
   const TensorView<T, 2>& hgT_view,
@@ -462,11 +587,10 @@ void submit_compress_kernel(
   const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
   cudaStream_t stream)
 {
-  const std::size_t K = p_view.dim(0);
-  Dim3 thread_dims = Dim3(K, 1, 1); // figure out how to consider register usage
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
 
-  CALL_KERNEL(compress_kernel, 1, thread_dims, 0, stream)(
-    key, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs, K);
+  CALL_KERNEL(compress_kernel, 1, thread_dims, 0, stream,
+    (key, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
   checkSubmit();
 }
 
@@ -475,6 +599,21 @@ void submit_compress_kernel(
 template
 void submit_compress_kernel<double, 3>(
   const Key<3>& key,
+  std::size_t N,
+  std::size_t K,
+  TensorView<double, 3+1>& p_view,
+  TensorView<double, 3+1>& result_view,
+  const TensorView<double, 2>& hgT_view,
+  double* tmp,
+  double* d_sumsq,
+  const std::array<const double*, Key<3>::num_children()>& in_ptrs,
+  cudaStream_t stream);
+
+/* Instantiations for 3D */
+template
+void submit_compress_kernel<double, 3>(
+  const Key<3>& key,
+  std::size_t K,
   TensorView<double, 3>& p_view,
   TensorView<double, 3>& result_view,
   const TensorView<double, 2>& hgT_view,
@@ -484,21 +623,22 @@ void submit_compress_kernel<double, 3>(
   cudaStream_t stream);
 
 
+
 /**
  * kernel for reconstruct
  */
 
 template<typename T, Dimension NDIM>
-GLOBALSCOPE void reconstruct_kernel(
+DEVSCOPE void reconstruct_kernel_impl(
   Key<NDIM> key,
+  std::size_t K,
   T* node_ptr,
   T* tmp_ptr,
   const T* hg_ptr,
   const T* from_parent_ptr,
-  std::array<T*, (1<<NDIM) > r_arr,
-  std::size_t K)
+  std::array<T*, Key<NDIM>::num_children()>& r_arr)
 {
-  const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+  const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
   const size_t TWOK2NDIM = std::pow(2*K,NDIM);
   SHARED TensorView<T, NDIM> node, s, workspace, from_parent;
   SHARED TensorView<T, 2> hg;
@@ -528,33 +668,114 @@ GLOBALSCOPE void reconstruct_kernel(
   }
 }
 
+
+template<typename T, Dimension NDIM>
+GLOBALSCOPE void reconstruct_kernel(
+  Key<NDIM> key,
+  std::size_t N,
+  std::size_t K,
+  T* node_ptr,
+  T* tmp_ptr,
+  const T* hg_ptr,
+  const T* from_parent_ptr,
+  std::array<T*, Key<NDIM>::num_children()> r_arr)
+{
+  const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+  int blockid = blockIdx.x;
+  const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+  const size_t K2NDIM    = std::pow(  K,NDIM);
+
+  /* pick the r's for this function */
+  SHARED std::array<T*, Key<NDIM>::num_children()> block_r_arr;
+  if (is_t0) {
+    for (std::size_t i = 0; i < Key<NDIM>::num_children(); ++i) {
+      block_r_arr[i] = &r_arr[i][K2NDIM*blockid];
+    }
+  }
+  /* no need to sync threads here, the impl will sync before the r_arr are used */
+  reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid],
+                          tmp_ptr + blockid*reconstruct_tmp_size<NDIM>(K),
+                          hg_ptr, &from_parent_ptr[K2NDIM*blockid],
+                          block_r_arr);
+}
+
 template<typename T, Dimension NDIM>
 void submit_reconstruct_kernel(
   const Key<NDIM>& key,
+  std::size_t N,
+  std::size_t K,
+  TensorView<T, NDIM+1>& node,
+  const TensorView<T, 2>& hg,
+  const TensorView<T, NDIM+1>& from_parent,
+  const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
+  T* tmp,
+  cudaStream_t stream)
+{
+  /* runs on a single block */
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+  CALL_KERNEL(reconstruct_kernel, N, thread_dims, 0, stream,
+    (key, N, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
+  checkSubmit();
+}
+
+
+template<typename T, Dimension NDIM>
+GLOBALSCOPE void reconstruct_kernel(
+  Key<NDIM> key,
+  std::size_t K,
+  T* node_ptr,
+  T* tmp_ptr,
+  const T* hg_ptr,
+  const T* from_parent_ptr,
+  std::array<T*, Key<NDIM>::num_children()> r_arr)
+{
+  const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+  const size_t K2NDIM    = std::pow(  K,NDIM);
+
+  /* no need to sync threads here, the impl will sync before the r_arr are used */
+  reconstruct_kernel_impl(key, K, node_ptr, tmp_ptr,
+                          hg_ptr, from_parent_ptr, r_arr);
+}
+
+template<typename T, Dimension NDIM>
+void submit_reconstruct_kernel(
+  const Key<NDIM>& key,
+  std::size_t K,
   TensorView<T, NDIM>& node,
   const TensorView<T, 2>& hg,
   const TensorView<T, NDIM>& from_parent,
   const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
   T* tmp,
-  std::size_t K,
   cudaStream_t stream)
 {
   /* runs on a single block */
-  Dim3 thread_dims = Dim3(K, 1, 1); // figure out how to consider register usage
-  CALL_KERNEL(reconstruct_kernel, 1, thread_dims, 0, stream)(
-    key, node.data(), tmp, hg.data(), from_parent.data(), r_arr, K);
+  Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+  CALL_KERNEL(reconstruct_kernel, 1, thread_dims, 0, stream,
+    (key, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
   checkSubmit();
 }
-
 
 /* explicit instantiation for 3D */
 template
 void submit_reconstruct_kernel<double, 3>(
   const Key<3>& key,
+  std::size_t N,
+  std::size_t K,
+  TensorView<double, 3+1>& node,
+  const TensorView<double, 2>& hg,
+  const TensorView<double, 4>& from_parent,
+  const std::array<double*, Key<3>::num_children()>& r_arr,
+  double* tmp,
+  cudaStream_t stream);
+
+/* explicit instantiation for 3D */
+template
+void submit_reconstruct_kernel<double, 3>(
+  const Key<3>& key,
+  std::size_t K,
   TensorView<double, 3>& node,
   const TensorView<double, 2>& hg,
   const TensorView<double, 3>& from_parent,
   const std::array<double*, Key<3>::num_children()>& r_arr,
   double* tmp,
-  std::size_t K,
   cudaStream_t stream);
