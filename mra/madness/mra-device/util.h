@@ -15,20 +15,25 @@ namespace mra::detail {
 #if defined(__CUDA_ARCH__)
 #define SCOPE __device__ __host__
 #define VARSCOPE __device__
-#define GLOBALSCOPE __global__
 #define SYNCTHREADS() __syncthreads()
 #define DEVSCOPE __device__
-#define SHARED __shared
-using Dim3 = dim3;
+#define SHARED __shared__
 #else // __CUDA_ARCH__
 #define SCOPE
 #define VARSCOPE
-#define GLOBALSCOPE
 #define SYNCTHREADS()
 #define DEVSCOPE
 #define SHARED
-using Dim3 = mra::detail::dim3;
 #endif // __CUDA_ARCH__
+
+#ifdef __CUDACC__
+using Dim3 = dim3;
+#define GLOBALSCOPE __global__
+#else
+using Dim3 = mra::detail::dim3;
+#define GLOBALSCOPE
+#endif // __CUDACC__
+
 
 #ifdef __CUDACC__
 #define checkSubmit() \
@@ -37,6 +42,9 @@ using Dim3 = mra::detail::dim3;
     << cudaGetErrorString(cudaPeekAtLastError()) << std::endl;
 #define CALL_KERNEL(name, block, thread, shared, stream, args) \
   name<<<block, thread, shared, stream>>> args
+
+#define THROW(s) do { std::fprintf(sterr, s); __trap(); } while(0)
+
 #else  // __CUDACC__
 #define checkSubmit()
 #define CALL_KERNEL(name, blocks, thread, shared, stream, args) do { \
@@ -46,6 +54,8 @@ using Dim3 = mra::detail::dim3;
       name args;                                \
     }                                           \
   } while (0)
+
+#define THROW(s) do { throw std::runtime_error(s); } while(0)
 #endif // __CUDACC__
 
 #endif // MRA_DEVICE_UTIL_H

@@ -42,6 +42,8 @@ namespace mra {
         }
       } else {
         for (std::size_t i = 0; i < t.dim(I); ++i) {
+          //if constexpr (NDIM == 3) printf("foreach_idx %zu, %zu, %zu\n", args..., i);
+          //if constexpr (NDIM == 4) printf("foreach_idx %zu, %zu, %zu, %zu\n", args..., i);
           fn(args..., i);
         }
       }

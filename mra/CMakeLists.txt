@@ -19,7 +19,7 @@ add_ttg_executable(mra-device-uot-host
                    LINK_LIBRARIES MADworld
                    RUNTIMES "parsec")
 
-if (TTG_HAVE_CUDA)
+if (HAVE_CUDA)
   add_ttg_executable(mra-device-cuda
                      madness/mra-device/mra-ttg-device.cc
                      madness/mra-device/gl.cc
@@ -39,6 +39,6 @@ if (TTG_HAVE_CUDA)
                      COMPILE_OPTIONS $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>
                      LINK_LIBRARIES MADworld
                      RUNTIMES "parsec")
-endif (TTG_HAVE_CUDA)
+endif (HAVE_CUDA)
 
 

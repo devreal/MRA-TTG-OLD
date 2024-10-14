@@ -29,8 +29,8 @@ auto make_start(const ttg::Edge<mra::Key<NDIM>, void>& ctl) {
 
 template<typename FnT, typename T, mra::Dimension NDIM>
 auto make_project(
-  mra::Domain<NDIM>& domain,
-  ttg::Buffer<FnT>& fb,
+  const ttg::Buffer<mra::Domain<NDIM>>& db,
+  const ttg::Buffer<FnT>& fb,
   std::size_t N,
   std::size_t K,
   const mra::FunctionData<T, NDIM>& functiondata,
@@ -39,7 +39,7 @@ auto make_project(
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result)
 {
   /* create a non-owning buffer for domain and capture it */
-  auto fn = [&, N, K, thresh, db = ttg::Buffer<mra::Domain<NDIM>>(&domain), gl = mra::GLbuffer<T>()]
+  auto fn = [&, N, K, thresh, gl = mra::GLbuffer<T>()]
             (const mra::Key<NDIM>& key) -> TASKTYPE {
     using tensor_type = typename mra::Tensor<T, NDIM+1>;
     using key_type = typename mra::Key<NDIM>;
@@ -69,7 +69,9 @@ auto make_project(
     } else {
       bool all_negligible = true;
       for (std::size_t i = 0; i < N; ++i) {
-        all_negligible &= mra::is_negligible<FnT,T,NDIM>(fn_arr[i], domain.template bounding_box<T>(key), mra::truncate_tol(key,thresh));
+        all_negligible &= mra::is_negligible<FnT,T,NDIM>(
+                                    fn_arr[i], db.host_ptr()->template bounding_box<T>(key),
+                                    mra::truncate_tol(key,thresh));
       }
       //std::cout << "project " << key << " all negligible " << all_negligible << std::endl;
       if (all_negligible) {
@@ -96,6 +98,9 @@ auto make_project(
         const std::size_t tmp_size = project_tmp_size<NDIM>(K)*N;
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+
+        /* coeffs don't have to be synchronized into the device */
+        coeffs.buffer().reset_scope(ttg::scope::Allocate);
 
         /* TODO: cannot do this from a function, had to move it into the main task */
   #ifndef TTG_ENABLE_HOST
@@ -137,7 +142,6 @@ auto make_project(
 #else
         ttg::broadcastk<0>(bcast_keys);
 #endif
-        std::cout << "project refining " << key << std::endl;
       }
 
     }
@@ -226,6 +230,10 @@ static auto make_compress(
       // allocate even though we might not need it
       mra::FunctionsReconstructedNode<T, NDIM> p(key, N, K);
 
+      /* d and p don't have to be synchronized into the device */
+      d.buffer().reset_scope(ttg::scope::Allocate);
+      p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+
       for (std::size_t i = 0; i < N; ++i) {  // Collect child leaf info
         result.is_child_leaf(i) = std::array{in0.is_leaf(i), in1.is_leaf(i), in2.is_leaf(i),
                                              in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
@@ -247,6 +255,12 @@ static auto make_compress(
                                    in4.coeffs().buffer(), in5.coeffs().buffer(),
                                    in6.coeffs().buffer(), in7.coeffs().buffer());
 #endif
+
+      /* some constness checks for the API */
+      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
+      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
+      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
+      static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
 
       /* assemble input array and submit kernel */
       //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
@@ -273,8 +287,8 @@ static auto make_compress(
                                   in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
         auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
         p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
-        std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
-                  << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+        //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
+        //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
       }
 
       // Recur up
@@ -341,6 +355,8 @@ auto make_reconstruct(
     std::array<mra::FunctionsReconstructedNode<T,NDIM>, mra::Key<NDIM>::num_children()> r_arr;
     for (int i = 0; i < key.num_children(); ++i) {
       r_arr[i] = mra::FunctionsReconstructedNode<T,NDIM>(key, N, K);
+      // no need to send this data to the device
+      r_arr[i].coeffs().buffer().reset_scope(ttg::scope::Allocate);
     }
 
     // helper lambda to pick apart the std::array
@@ -449,18 +465,20 @@ void test(std::size_t N, std::size_t K) {
   gaussians.reserve(N);
   T expnt = 30000.0;
   for (int i = 0; i < N; ++i) {
-    //T expnt = 1500 + 30000.0*drand48();
+    //T expnt = 1500 + 1500*drand48();
     mra::Coordinate<T,NDIM> r;
     for (size_t d=0; d<NDIM; d++) {
       r[d] = T(-6.0) + T(12.0)*drand48();
     }
+    std::cout << "Gaussian " << i << " expnt " << expnt << std::endl;
     gaussians.emplace_back(D, expnt, r);
   }
 
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
+  auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
   auto start = make_start(project_control);
-  auto project = make_project(D, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
+  auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
   auto printer =   make_printer(project_result,    "projected    ", false);
@@ -496,7 +514,7 @@ int main(int argc, char **argv) {
   ttg::initialize(argc, argv);
   mra::GLinitialize();
 
-  test<double, 3>(2, 3);
+  test<double, 3>(10, 10);
 
   ttg::finalize();
 }

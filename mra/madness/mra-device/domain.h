@@ -41,7 +41,6 @@ namespace mra {
             cell_reciprocal_width[d] = 1.0/cell_width[d];
             cell_volume = 1.0;
             for (double x : cell_width) cell_volume *= x;
-            initialized = true;
         }
 
     public:
@@ -55,6 +54,7 @@ namespace mra {
 
         SCOPE void set_cube(double lo, double hi) {
             for (Dimension d = 0; d < NDIM; ++d) set(d, lo, hi);
+            initialized = true;
         }
 
         /// Returns the simulation domain in dimension d as a pair of values (first=lo, second=hi)
