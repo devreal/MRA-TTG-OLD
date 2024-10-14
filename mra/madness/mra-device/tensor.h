@@ -66,6 +66,16 @@ namespace mra {
                     "Number of arguments does not match number of Dimensions.");
     }
 
+    Tensor(const std::array<size_type, NDIM>& dims)
+    : ttvalue_type()
+    , m_dims(dims)
+    , m_buffer(size())
+    {
+      // TODO: make this static_assert (clang 14 doesn't get it)
+      assert(dims.size() == NDIM);
+                    //"Number of arguments does not match number of Dimensions.");
+    }
+
 
     Tensor(Tensor<T, NDIM, Allocator>&& other) = default;
 

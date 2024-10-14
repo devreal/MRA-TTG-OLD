@@ -128,14 +128,14 @@ namespace mra {
 
 
     /// Compute Frobenius norm ... still needs specializing for complex
-    template <typename T, Dimension NDIM, typename accumulatorT = T>
+    template <typename T, Dimension NDIM, typename accumulatorT = std::decay_t<T>>
     SCOPE accumulatorT normf(const TensorView<T, NDIM>& a) {
 #ifdef __CUDA_ARCH__
       __shared__ accumulatorT sum;
 #else  // __CUDA_ARCH__
       accumulatorT sum;
 #endif // __CUDA_ARCH__
-      sumabssq<accumulatorT>(a, &sum);
+      sumabssq(a, &sum);
 #ifdef __CUDA_ARCH__
       /* wait for all threads to contribute */
       SYNCTHREADS();

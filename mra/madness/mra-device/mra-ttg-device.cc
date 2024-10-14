@@ -102,7 +102,7 @@ auto make_project(
       auto  gldata = gl.current_device_ptr();
 
       /* submit the kernel */
-      submit_fcoeffs_kernel(domain, gldata, *f_ptr, key, coeffs_view,
+      submit_fcoeffs_kernel(domain, gldata, *f_ptr, key, K, coeffs_view,
                             phibar_view, hgT_view, tmp_device,
                             is_leaf_device, thresh, ttg::device::current_stream());
 
@@ -237,7 +237,7 @@ static auto make_compress(
       auto rcoeffs_view = d.current_view();
       auto hgT_view = hgT.current_view();
 
-      submit_compress_kernel(key, coeffs_view, rcoeffs_view, hgT_view,
+      submit_compress_kernel(key, K, coeffs_view, rcoeffs_view, hgT_view,
                             tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
                             ttg::device::current_stream());
 
@@ -336,8 +336,8 @@ auto make_reconstruct(
     auto node_view = node.coeffs.current_view();
     auto hg_view = hg.current_view();
     auto from_parent_view = from_parent.current_view();
-    submit_reconstruct_kernel(key, node_view, hg_view, from_parent_view,
-                              r_ptrs, tmp_scratch.device_ptr(), K, ttg::device::current_stream());
+    submit_reconstruct_kernel(key, K, node_view, hg_view, from_parent_view,
+                              r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
 
     // forward() returns a vector that we can push into
 #ifndef TTG_ENABLE_HOST
@@ -413,6 +413,7 @@ void test(std::size_t K) {
   // define a Gaussian
   //auto gaussian = mra::Gaussian<T, NDIM>(D, T(3.0), {T(0.0),T(0.0),T(0.0)});
   T expnt = 30000.0;
+  //T expnt = 1500 + 30000.0*drand48();
   mra::Coordinate<T,NDIM> r;
   for (size_t d=0; d<NDIM; d++) {
     r[d] = T(-6.0) + T(12.0)*drand48();

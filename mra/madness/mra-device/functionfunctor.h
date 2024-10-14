@@ -42,12 +42,12 @@ namespace mra {
      */
 
     /// Evaluate at points formed by tensor product of npt points in each dimension
-    SCOPE template <typename functorT, typename T> void eval_cube(const functorT& f, const TensorView<T,1>& x, TensorView<T,1>& values) {
+    template <typename functorT, typename T> SCOPE void eval_cube(const functorT& f, const TensorView<T,1>& x, TensorView<T,1>& values) {
         for (size_t i=0; i<x.dim(0); i++) values(i) = f(Coordinate<T,1>{x(0,i)});
     }
 
     /// Evaluate at points formed by tensor product of npt points in each dimension
-    SCOPE template <typename functorT, typename T> void eval_cube(const functorT& f, const TensorView<T,2>& x, TensorView<T,2>& values) {
+    template <typename functorT, typename T> SCOPE void eval_cube(const functorT& f, const TensorView<T,2>& x, TensorView<T,2>& values) {
         for (size_t i=0; i<x.dim(0); i++) {
             for (size_t j=0; j<x.dim(1); j++) {
                 values(i,j) = f(Coordinate<T,2>{x(0,i),x(1,j)});
@@ -56,7 +56,7 @@ namespace mra {
     }
 
     /// Evaluate at points formed by tensor product of K points in each dimension
-    SCOPE template <typename functorT, typename T> void eval_cube(const functorT& f, const TensorView<T,3>& x, TensorView<T,3>& values) {
+    template <typename functorT, typename T> SCOPE void eval_cube(const functorT& f, const TensorView<T,3>& x, TensorView<T,3>& values) {
         for (size_t i=0; i<x.dim(0); i++) {
             for (size_t j=0; j<x.dim(1); j++) {
                 for (size_t k=0; k<x.dim(2); k++) {
@@ -67,21 +67,21 @@ namespace mra {
     }
 
     /// Evaluate at points formed by tensor product of K points in each dimension using vectorized form
-    SCOPE template <typename functorT, typename T> void eval_cube_vec(const functorT& f, const TensorView<T,1>& x, T* values) {
+    template <typename functorT, typename T> SCOPE void eval_cube_vec(const functorT& f, const TensorView<T,1>& x, T* values) {
         for (size_t i=0; i<x.dim(0); i++) {
             values[i] = f(x(0,i));
         }
     }
 
     /// Evaluate at points formed by tensor product of K points in each dimension using vectorized form
-    SCOPE template <typename functorT, typename T, size_t K2NDIM> void eval_cube_vec(const functorT& f, const TensorView<T,2>& x, T* values) {
+    template <typename functorT, typename T, size_t K2NDIM> SCOPE void eval_cube_vec(const functorT& f, const TensorView<T,2>& x, T* values) {
         for (size_t i=0; i<x.dim(0); i++) {
             values[i] = f(x(0,i),x(1,i));
         }
     }
 
     /// Evaluate at points formed by tensor product of K points in each dimension using vectorized form
-    SCOPE template <typename functorT, typename T, size_t K2NDIM> void eval_cube_vec(const functorT& f, const TensorView<T,3>& x, T* values) {
+    template <typename functorT, typename T, size_t K2NDIM> SCOPE void eval_cube_vec(const functorT& f, const TensorView<T,3>& x, T* values) {
         for (size_t i=0; i<K2NDIM; i++) {
             values[i] = f(x(0,i),x(1,i),x(2,i));
         }
@@ -99,7 +99,7 @@ namespace mra {
             ::mra::is_detected<is_negligible_t,functorT,pairT>;
     }
 
-    SCOPE template <typename functionT> Level initial_level(const functionT& f) {
+    template <typename functionT> SCOPE Level initial_level(const functionT& f) {
         if constexpr (detail::supports_initial_level<functionT>()) return f.initial_level();
         else return 2; // <<<<<<<<<<<<<<< needs updating to make user configurable
     }

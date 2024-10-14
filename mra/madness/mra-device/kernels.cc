@@ -10,9 +10,10 @@ struct dim3 {
 
 /* define our own thread layout (single thread) */
 static constexpr const dim3 threadIdx = {0, 0, 0};
-static constexpr const dim3 blockIdx  = {0, 0, 0};
 static constexpr const dim3 blockDim  = {1, 1, 1};
 static constexpr const dim3 gridDim   = {1, 1, 1};
+/* we modify blockIdx during kernel execution (iterating over the number of requested blocks ) */
+static thread_local dim3 blockIdx  = {0, 0, 0};
 
 /* point cudaStream_t to our own stream type */
 typedef ttg::device::Stream cudaStream_t;
