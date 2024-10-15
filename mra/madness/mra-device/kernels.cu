@@ -237,12 +237,18 @@ template <typename T, Dimension NDIM>
 DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
  const T scalarA, const T scalarB, std::size_t K) {
   
-  SHARED TensorView<T, NDIM> nA(nodeA, K), nB(nodeB, K), nC(nodeR, K);
+  const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+  SHARED TensorView<T, NDIM> nA, nB, nC;
+  if (is_t0) {
+    nA = TensorView<T, NDIM>(nodeA, K);
+    nB = TensorView<T, NDIM>(nodeB, K);
+    nC = TensorView<T, NDIM>(nodeR, K);
+  }
+  SYNCTHREADS()
+  
   foreach_idx<NDIM>([&](auto... idx) {
     nC(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
   });
-
-  SYNCTHREADS()
 }
 
 template <typename T, Dimension NDIM>
