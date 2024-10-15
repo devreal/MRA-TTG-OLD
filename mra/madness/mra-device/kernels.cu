@@ -374,7 +374,18 @@ GLOBALSCOPE void fcoeffs_kernel(
 }
 
 template <typename T, Dimension NDIM>
-void submit_add_kernel(){}
+void submit_add_kernel(
+  const TensorView<T, NDIM>& funcA,
+  const TensorView<T, NDIM>& funcB,
+  TensorView<T, NDIM>& funcR,
+  const T scalarA,
+  const T scalarB,
+  std::size_t K,
+  cudaStream_t stream){
+    CALL_KERNEL(add_kernel, 1, Dim3(K, K, 1), 0, stream,
+      (funcA.data(), funcB.data(), funcR.data(), scalarA, scalarB, K));
+    checkSubmit();
+}
 
 template<typename Fn, typename T, Dimension NDIM>
 void submit_fcoeffs_kernel(

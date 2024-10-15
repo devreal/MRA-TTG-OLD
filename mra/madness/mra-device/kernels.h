@@ -131,4 +131,17 @@ void submit_reconstruct_kernel(
   T* tmp,
   ttg::device::Stream stream);
 
+/**
+ * add kernel
+ */
+template <typename T, mra::Dimension NDIM>
+void submit_add_kernel(
+  const mra::TensorView<T, NDIM>& nodeA,
+  const mra::TensorView<T, NDIM>& nodeB,
+  mra::TensorView<T, NDIM>& nodeR,
+  const T scalarA,
+  const T scalarB,
+  std::size_t K,
+  ttg::device::Stream stream);
+
 #endif // HAVE_KERNELS_H
