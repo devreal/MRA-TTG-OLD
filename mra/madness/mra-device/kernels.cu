@@ -233,6 +233,31 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
   return slices;
 }
 
+template <typename T, Dimension NDIM>
+DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
+ const T scalarA, const T scalarB, std::size_t K) {
+  
+  SHARED TensorView<T, NDIM> nA(nodeA, K), nB(nodeB, K), nC(nodeR, K);
+  foreach_idx<NDIM>([&](auto... idx) {
+    nC(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
+  });
+
+  SYNCTHREADS()
+}
+
+template <typename T, Dimension NDIM>
+GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
+ const T scalarA, const T scalarB, std::size_t K) {
+  
+  const size_t K2NDIM = std::pow(K,NDIM);
+  /* adjust pointers for the function of each block */
+  int blockid = blockIdx.x;
+  
+  add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid], &nodeB[K2NDIM*blockid], 
+  &nodeR[K2NDIM*blockid], scalarA, scalarB, K);
+}
+
+
 template<typename Fn, typename T, Dimension NDIM>
 DEVSCOPE void fcoeffs_kernel_impl(
   const Domain<NDIM>& D,
@@ -341,6 +366,9 @@ GLOBALSCOPE void fcoeffs_kernel(
   fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K, &tmp[(project_tmp_size<NDIM>(K)*blockid)],
                       phibar_ptr, coeffs_ptr+(blockid*K2NDIM), hgT_ptr, &is_leaf[blockid], thresh);
 }
+
+template <typename T, Dimension NDIM>
+void submit_add_kernel(){}
 
 template<typename Fn, typename T, Dimension NDIM>
 void submit_fcoeffs_kernel(
