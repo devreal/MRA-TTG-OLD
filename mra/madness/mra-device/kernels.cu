@@ -246,20 +246,20 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
   }
   SYNCTHREADS()
   
-  foreach_idx<NDIM>([&](auto... idx) {
+  foreach_idx(nA, [&](auto... idx) {
     nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
   });
 }
 
 template <typename T, Dimension NDIM>
 GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
- const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K) {
+ const T *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const mra::Key<NDIM>& key) {
   
-  const size_t K2NDIM = std::pow(K,NDIM);
+  const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
   
-  if (idxs[blockid] >= 0){
+  if (idxs[blockid] >= T(0)){
     int fbIdx = idxs[blockid];
   add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid], &nodeB[K2NDIM*fbIdx], 
   &nodeR[blockid], scalarA, scalarB, K);
@@ -273,19 +273,21 @@ GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
 // funcR = [{0, 1}, {1, 2}, {3, 0}]
 template <typename T, Dimension NDIM>
 void submit_add_kernel(
+  const Key<NDIM>& key,
   const TensorView<T, NDIM+1>& funcA,
   const TensorView<T, NDIM+1>& funcB,
   TensorView<T, NDIM+1>& funcR,
-  const int* idxs,
+  const T* idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
   std::size_t K,
   cudaStream_t stream){
+
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(add_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, K));
+      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
     checkSubmit();
 }
 
@@ -294,6 +296,7 @@ void submit_add_kernel(
  */
 template
 void submit_add_kernel<double, 3>(
+  const Key<3>& key,
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,
   TensorView<double, 4>& funcR,
@@ -851,3 +854,4 @@ void submit_reconstruct_kernel<double, 3>(
   const std::array<double*, Key<3>::num_children()>& r_arr,
   double* tmp,
   cudaStream_t stream);
+  

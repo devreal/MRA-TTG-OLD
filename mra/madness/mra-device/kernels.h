@@ -136,10 +136,11 @@ void submit_reconstruct_kernel(
  */
 template <typename T, mra::Dimension NDIM>
 void submit_add_kernel(
+  const mra::Key<NDIM>& key,
   const mra::TensorView<T, NDIM+1>& nodeA,
   const mra::TensorView<T, NDIM+1>& nodeB,
   mra::TensorView<T, NDIM+1>& nodeR,
-  const int* idxs,
+  const T* idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
