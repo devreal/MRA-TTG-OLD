@@ -249,7 +249,7 @@ static auto make_compress(
       auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
 #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
-                                   tmp_scratch, sumsqs_scratch,
+                                   tmp_scratch, d_sumsq_scratch,
                                    in0.coeffs().buffer(), in1.coeffs().buffer(),
                                    in2.coeffs().buffer(), in3.coeffs().buffer(),
                                    in4.coeffs().buffer(), in5.coeffs().buffer(),
@@ -441,6 +441,36 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
     }
   };
   return ttg::make_tt(func, ttg::edges(in), ttg::edges(), "printer", {"input"});
+}
+
+template<typename T, mra::Dimension NDIM>
+auto make_add(const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in1,
+              const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in2,
+              const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& out,
+              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
+  auto func = [&, N, K, scalarA, scalarB, idxBuf = ttg::Buffer<T>(idxs, N)](const mra::Key<NDIM>& key,
+   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2) {
+    
+    mra::FunctionsReconstructedNode<T, NDIM> out(key, N, K);
+    #ifndef TTG_ENABLE_HOST
+      co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
+                                    out.coeffs().buffer(), idxBuf);
+    #endif
+
+    auto t1_view = t1.coeffs().current_view();
+    auto t2_view = t2.coeffs().current_view();
+    auto out_view = out.coeffs().current_view();
+    submit_add_kernel<T, NDIM>(t1_view, t2_view, out_view, idxBuf.current_device_ptr(), 
+                                scalarA, scalarB, N, K, ttg::device::current_stream()) ;
+    
+    #ifndef TTG_ENABLE_HOST
+        co_await ttg::device::forward(
+          ttg::device::send<0>(key, std::move(out)));
+    #else
+    #endif
+  };
+
+  return ttg::make_tt<Space>(func, ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
 }
 
 /**
