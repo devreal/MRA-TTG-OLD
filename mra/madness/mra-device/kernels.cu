@@ -279,8 +279,8 @@ void submit_add_kernel(
   const int* idxs,
   const T scalarA,
   const T scalarB,
-  std::size_t K,
   std::size_t N,
+  std::size_t K,
   cudaStream_t stream){
     Dim3 thread_dims = Dim3(K, K, 1);
 
