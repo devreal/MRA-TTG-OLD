@@ -238,30 +238,71 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
  const T scalarA, const T scalarB, std::size_t K) {
   
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-  SHARED TensorView<T, NDIM> nA, nB, nC;
+  SHARED TensorView<T, NDIM> nA, nB, nR;
   if (is_t0) {
     nA = TensorView<T, NDIM>(nodeA, K);
     nB = TensorView<T, NDIM>(nodeB, K);
-    nC = TensorView<T, NDIM>(nodeR, K);
+    nR = TensorView<T, NDIM>(nodeR, K);
   }
   SYNCTHREADS()
   
   foreach_idx<NDIM>([&](auto... idx) {
-    nC(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
+    nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
   });
 }
 
 template <typename T, Dimension NDIM>
 GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
- const T scalarA, const T scalarB, std::size_t K) {
+ const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K) {
   
   const size_t K2NDIM = std::pow(K,NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
   
-  add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid], &nodeB[K2NDIM*blockid], 
-  &nodeR[K2NDIM*blockid], scalarA, scalarB, K);
+  if (idxs[blockid] >= 0){
+    int fbIdx = idxs[blockid];
+  add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid], &nodeB[K2NDIM*fbIdx], 
+  &nodeR[blockid], scalarA, scalarB, K);
+  }
 }
+
+// 
+// funcA = [f0, f1, f2, f3]
+// funcB = [g0, g1, g2, g3]
+// idx = [1, 2, 3, -1]
+// funcR = [{0, 1}, {1, 2}, {3, 0}]
+template <typename T, Dimension NDIM>
+void submit_add_kernel(
+  const TensorView<T, NDIM+1>& funcA,
+  const TensorView<T, NDIM+1>& funcB,
+  TensorView<T, NDIM+1>& funcR,
+  const int* idxs,
+  const T scalarA,
+  const T scalarB,
+  std::size_t K,
+  std::size_t N,
+  cudaStream_t stream){
+    Dim3 thread_dims = Dim3(K, K, 1);
+
+    CALL_KERNEL(add_kernel, N, thread_dims, 0, stream,
+      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, K));
+    checkSubmit();
+}
+
+/**
+ * Instantiate for 3D Gaussian
+ */
+template
+void submit_add_kernel<double, 3>(
+  const TensorView<double, 4>& funcA,
+  const TensorView<double, 4>& funcB,
+  TensorView<double, 4>& funcR,
+  const int* idxs,
+  const double scalarA,
+  const double scalarB,
+  std::size_t K,
+  std::size_t N,
+  cudaStream_t stream);
 
 
 template<typename Fn, typename T, Dimension NDIM>
@@ -371,20 +412,6 @@ GLOBALSCOPE void fcoeffs_kernel(
 
   fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K, &tmp[(project_tmp_size<NDIM>(K)*blockid)],
                       phibar_ptr, coeffs_ptr+(blockid*K2NDIM), hgT_ptr, &is_leaf[blockid], thresh);
-}
-
-template <typename T, Dimension NDIM>
-void submit_add_kernel(
-  const TensorView<T, NDIM>& funcA,
-  const TensorView<T, NDIM>& funcB,
-  TensorView<T, NDIM>& funcR,
-  const T scalarA,
-  const T scalarB,
-  std::size_t K,
-  cudaStream_t stream){
-    CALL_KERNEL(add_kernel, 1, Dim3(K, K, 1), 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), scalarA, scalarB, K));
-    checkSubmit();
 }
 
 template<typename Fn, typename T, Dimension NDIM>
