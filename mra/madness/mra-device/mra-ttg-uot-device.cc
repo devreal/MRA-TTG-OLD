@@ -230,65 +230,105 @@ static auto make_compress(
       // allocate even though we might not need it
       mra::FunctionsReconstructedNode<T, NDIM> p(key, N, K);
 
-      /* d and p don't have to be synchronized into the device */
-      d.buffer().reset_scope(ttg::scope::Allocate);
-      p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
-
       for (std::size_t i = 0; i < N; ++i) {  // Collect child leaf info
         result.is_child_leaf(i) = std::array{in0.is_leaf(i), in1.is_leaf(i), in2.is_leaf(i),
-                                             in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
-                                             in6.is_leaf(i), in7.is_leaf(i)};
+                                            in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
+                                            in6.is_leaf(i), in7.is_leaf(i)};
       }
 
-      /* stores sumsq for each child and for result at the end of the kernel */
-      const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
-      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-      const auto& hgT = functiondata.get_hgT();
-      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-      auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
-      auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
-#ifndef TTG_ENABLE_HOST
-      co_await ttg::device::select(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
-                                   tmp_scratch, d_sumsq_scratch,
-                                   in0.coeffs().buffer(), in1.coeffs().buffer(),
-                                   in2.coeffs().buffer(), in3.coeffs().buffer(),
-                                   in4.coeffs().buffer(), in5.coeffs().buffer(),
-                                   in6.coeffs().buffer(), in7.coeffs().buffer());
-#endif
+      /* check if all inputs are on the host */
+      bool all_host = in0.coeffs().buffer().get_owner_device().is_host() &&
+                      in1.coeffs().buffer().get_owner_device().is_host() &&
+                      in2.coeffs().buffer().get_owner_device().is_host() &&
+                      in3.coeffs().buffer().get_owner_device().is_host() &&
+                      in4.coeffs().buffer().get_owner_device().is_host() &&
+                      in5.coeffs().buffer().get_owner_device().is_host() &&
+                      in6.coeffs().buffer().get_owner_device().is_host() &&
+                      in7.coeffs().buffer().get_owner_device().is_host();
 
-      /* some constness checks for the API */
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
-      static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
+      if (all_host) {
+        /* all data is still on the host so the coefficients are zero */
+        /* TODO: mark the tensor as empty (once we have sparsity) */
+        d.current_view() = 0.0;
+        p.coeffs().current_view() = 0.0;
 
-      /* assemble input array and submit kernel */
-      //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
-      auto input_ptrs = std::array{in0.coeffs().buffer().current_device_ptr(), in1.coeffs().buffer().current_device_ptr(),
-                                   in2.coeffs().buffer().current_device_ptr(), in3.coeffs().buffer().current_device_ptr(),
-                                   in4.coeffs().buffer().current_device_ptr(), in5.coeffs().buffer().current_device_ptr(),
-                                   in6.coeffs().buffer().current_device_ptr(), in7.coeffs().buffer().current_device_ptr()};
+        for (std::size_t i = 0; i < N; ++i) {
+          p.sum(i) = 0.0;
+        }
+      } else {
 
-      auto coeffs_view = p.coeffs().current_view();
-      auto rcoeffs_view = d.current_view();
-      auto hgT_view = hgT.current_view();
+        /* some inputs are on the device so submit a kernel */
 
-      submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                            tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
-                            ttg::device::current_stream());
+        /* d and p don't have to be synchronized into the device */
+        d.buffer().reset_scope(ttg::scope::Allocate);
+        p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
 
-      /* wait for kernel and transfer sums back */
-#ifndef TTG_ENABLE_HOST
-      co_await ttg::device::wait(d_sumsq_scratch);
-#endif
+        /* stores sumsq for each child and for result at the end of the kernel */
+        const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
+        auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+        const auto& hgT = functiondata.get_hgT();
+        auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+        auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
+        auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
+  #ifndef TTG_ENABLE_HOST
+        auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
+                                        tmp_scratch, d_sumsq_scratch);
+        auto select_in = [&](const auto& in) {
+          auto& buffer = in.coeffs().buffer();
+          if (!buffer.get_owner_device().is_host()) {
+            input.add(buffer);
+          }
+        };
+        select_in(in0);
+        select_in(in1);
+        select_in(in2);
+        select_in(in3);
+        select_in(in4);
+        select_in(in5);
+        select_in(in6);
+        select_in(in7);
 
-      for (std::size_t i = 0; i < N; ++i) {
-        auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
-                                  in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
-        auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
-        p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
-        //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
-        //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+        co_await ttg::device::select(input);
+  #endif
+
+        /* some constness checks for the API */
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
+        static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
+
+        /* assemble input array and submit kernel */
+        //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
+        auto get_ptr = [](const auto& in) {
+          auto& buffer = in.coeffs().buffer();
+          return buffer.get_owner_device().is_host() ? nullptr
+                                              : buffer.current_device_ptr();
+        };
+        auto input_ptrs = std::array{get_ptr(in0), get_ptr(in1), get_ptr(in2), get_ptr(in3),
+                                     get_ptr(in4), get_ptr(in5), get_ptr(in6), get_ptr(in7)};
+
+        auto coeffs_view = p.coeffs().current_view();
+        auto rcoeffs_view = d.current_view();
+        auto hgT_view = hgT.current_view();
+
+        submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
+                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
+                              ttg::device::current_stream());
+
+        /* wait for kernel and transfer sums back */
+  #ifndef TTG_ENABLE_HOST
+        co_await ttg::device::wait(d_sumsq_scratch);
+  #endif
+
+        for (std::size_t i = 0; i < N; ++i) {
+          auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
+                                    in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
+          auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
+          p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
+          //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
+          //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+        }
+
       }
 
       // Recur up
@@ -307,7 +347,7 @@ static auto make_compress(
 #endif
       } else {
         for (std::size_t i = 0; i < N; ++i) {
-          std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) + d_sumsq[i] << std::endl;
+          std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) << std::endl;
         }
 #ifndef TTG_ENABLE_HOST
         co_await ttg::device::forward(
