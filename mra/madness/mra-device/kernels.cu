@@ -300,7 +300,7 @@ void submit_add_kernel<double, 3>(
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,
   TensorView<double, 4>& funcR,
-  const int* idxs,
+  const double* idxs,
   const double scalarA,
   const double scalarB,
   std::size_t K,
@@ -854,4 +854,3 @@ void submit_reconstruct_kernel<double, 3>(
   const std::array<double*, Key<3>::num_children()>& r_arr,
   double* tmp,
   cudaStream_t stream);
-  

@@ -448,7 +448,7 @@ auto make_add(const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,
               const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in2,
               const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& out,
               const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
-  auto func = [&, N, K, scalarA, scalarB, idxBuf = ttg::Buffer<T>(idxs, N)](const mra::Key<NDIM>& key,
+  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<T>(idxs, N)](const mra::Key<NDIM>& key,
    const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2) {
     
     mra::FunctionsReconstructedNode<T, NDIM> out(key, N, K);
@@ -464,9 +464,7 @@ auto make_add(const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,
                                 scalarA, scalarB, N, K, ttg::device::current_stream()) ;
     
     #ifndef TTG_ENABLE_HOST
-        co_await ttg::device::forward(
-          ttg::device::send<0>(key, std::move(out)));
-    #else
+        co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
     #endif
   };
 
