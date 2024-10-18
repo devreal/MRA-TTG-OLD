@@ -253,7 +253,7 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
 
 template <typename T, Dimension NDIM>
 GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
- const T *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const mra::Key<NDIM>& key) {
+ const T *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
   
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
@@ -261,16 +261,21 @@ GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
   
   if (idxs[blockid] >= T(0)){
     int fbIdx = idxs[blockid];
-  add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid], &nodeB[K2NDIM*fbIdx], 
-  &nodeR[blockid], scalarA, scalarB, K);
+    add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
+                             &nodeB[K2NDIM*fbIdx], 
+                             &nodeR[blockid],
+                             scalarA, scalarB, K);
   }
 }
 
-// 
-// funcA = [f0, f1, f2, f3]
-// funcB = [g0, g1, g2, g3]
-// idx = [1, 2, 3, -1]
-// funcR = [{0, 1}, {1, 2}, {3, 0}]
+
+// funcA = [f0, f1, f2, f3];
+// funcB = [g0, g1, g2, g3];
+// idxs = [1, 2, 3, -1];  // index of functions in funcB to add to corresponding 
+// functions in funcA. -1 means no function to add
+
+// funcR = [{0, 1}, {1, 2}, {3, 0}]; // result of adding {funcA[i], funcB[idxs[i]]}
+
 template <typename T, Dimension NDIM>
 void submit_add_kernel(
   const Key<NDIM>& key,
