@@ -465,6 +465,8 @@ auto make_add(const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,
     
     #ifndef TTG_ENABLE_HOST
         co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
+    else
+        ttg::send<0>(key, std::move(out));
     #endif
   };
 
