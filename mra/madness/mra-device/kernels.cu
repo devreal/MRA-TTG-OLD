@@ -606,7 +606,7 @@ GLOBALSCOPE void compress_kernel(
   SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
   if (is_t0) {
     for (std::size_t i = 0; i < Key<NDIM>::num_children(); ++i) {
-      block_in_ptrs[i] = &in_ptrs[i][K2NDIM*blockid];
+      block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockid] : nullptr;
     }
   }
   /* no need to sync threads here */
