@@ -253,13 +253,13 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
 
 template <typename T, Dimension NDIM>
 GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
- const T *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
+ const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
   
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
   
-  if (idxs[blockid] >= T(0)){
+  if (idxs[blockid] >= 0){
     int fbIdx = idxs[blockid];
     add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
                              &nodeB[K2NDIM*fbIdx], 
@@ -282,7 +282,7 @@ void submit_add_kernel(
   const TensorView<T, NDIM+1>& funcA,
   const TensorView<T, NDIM+1>& funcB,
   TensorView<T, NDIM+1>& funcR,
-  const T* idxs,
+  const int* idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
@@ -305,7 +305,7 @@ void submit_add_kernel<double, 3>(
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,
   TensorView<double, 4>& funcR,
-  const double* idxs,
+  const int* idxs,
   const double scalarA,
   const double scalarB,
   std::size_t K,

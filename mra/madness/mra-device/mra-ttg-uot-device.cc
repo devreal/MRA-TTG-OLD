@@ -444,34 +444,37 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
 }
 
 template<typename T, mra::Dimension NDIM>
-auto make_add(const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in1,
-              const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in2,
-              const ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& out,
+auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
               const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
-  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<T>(idxs, N)](const mra::Key<NDIM>& key,
-   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2) {
+  auto func = [N, K, scalarA, scalarB, idxs](const mra::Key<NDIM>& key,
+   const mra::FunctionsCompressedNode<T, NDIM>& t1, const mra::FunctionsCompressedNode<T, NDIM>& t2)
+   -> TASKTYPE {
     
-    mra::FunctionsReconstructedNode<T, NDIM> out(key, N, K);
+    auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+
     #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
-                                    out.coeffs().buffer(), idxBuf);
+                                    out.coeffs().buffer());
     #endif
 
     auto t1_view = t1.coeffs().current_view();
     auto t2_view = t2.coeffs().current_view();
     auto out_view = out.coeffs().current_view();
-    submit_add_kernel<T, NDIM>(t1_view, t2_view, out_view, idxBuf.current_device_ptr(), 
-                                scalarA, scalarB, N, K, ttg::device::current_stream()) ;
+
+    submit_add_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs, 
+                                scalarA, scalarB, N, K, ttg::device::current_stream());
     
     #ifndef TTG_ENABLE_HOST
         co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
     else
         ttg::send<0>(key, std::move(out));
     #endif
-  };
+    };
 
   return ttg::make_tt<Space>(func, ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
-}
+  }
 
 /**
  * Test MRA projection with K coefficients in each of the NDIM dimension on
@@ -488,7 +491,7 @@ void test(std::size_t N, std::size_t K) {
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, add_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
@@ -504,6 +507,9 @@ void test(std::size_t N, std::size_t K) {
     gaussians.emplace_back(D, expnt, r);
   }
 
+  int *idxs = new int(N);
+  for (int i = 0; i < N; ++i) idxs[i] = i;
+
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
@@ -511,9 +517,11 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
+  auto add = make_add(compress_result, compress_result, add_result, T(1.0), T(1.0), idxs, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
+  auto printer4 = make_printer(add_result, "added", false);
 
   auto connected = make_graph_executable(start.get());
   assert(connected);
