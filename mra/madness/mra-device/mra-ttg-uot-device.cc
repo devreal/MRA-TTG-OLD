@@ -451,7 +451,7 @@ auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>
   auto func = [N, K, scalarA, scalarB, idxs](const mra::Key<NDIM>& key,
    const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
    -> TASKTYPE {
-    
+
     auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
 
     #ifndef TTG_ENABLE_HOST
@@ -463,9 +463,9 @@ auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>
     auto t2_view = t2.coeffs().current_view();
     auto out_view = out.coeffs().current_view();
 
-    submit_add_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs, 
+    submit_add_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs,
                                 scalarA, scalarB, N, K, ttg::device::current_stream());
-    
+
     #ifndef TTG_ENABLE_HOST
         co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
     else
@@ -474,7 +474,7 @@ auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>
     };
 
   return ttg::make_tt<Space>(func, ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
-  }
+}
 
 /**
  * Test MRA projection with K coefficients in each of the NDIM dimension on
@@ -507,7 +507,7 @@ void test(std::size_t N, std::size_t K) {
     gaussians.emplace_back(D, expnt, r);
   }
 
-  int *idxs = new int(N);
+  int *idxs = new int[N];
   for (int i = 0; i < N; ++i) idxs[i] = i;
 
   // put it into a buffer
@@ -539,6 +539,8 @@ void test(std::size_t N, std::size_t K) {
   }
   ttg::execute();
   ttg::fence();
+
+  delete[] idxs;
 
   if (ttg::default_execution_context().rank() == 0) {
     end = std::chrono::high_resolution_clock::now();
