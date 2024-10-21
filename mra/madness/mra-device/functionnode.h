@@ -286,6 +286,10 @@ namespace mra {
           return m_coeffs;
         }
 
+        const auto& coeffs() const {
+          return m_coeffs;
+        }
+
         key_type& key() {
           return m_key;
         }
