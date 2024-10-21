@@ -444,15 +444,15 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
 }
 
 template<typename T, mra::Dimension NDIM>
-auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
+auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
               const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
   auto func = [N, K, scalarA, scalarB, idxs](const mra::Key<NDIM>& key,
-   const mra::FunctionsCompressedNode<T, NDIM>& t1, const mra::FunctionsCompressedNode<T, NDIM>& t2)
+   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
    -> TASKTYPE {
     
-    auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+    auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
 
     #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
@@ -490,8 +490,8 @@ void test(std::size_t N, std::size_t K) {
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, add_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, add_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
@@ -517,7 +517,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto add = make_add(compress_result, compress_result, add_result, T(1.0), T(1.0), idxs, N, K);
+  auto add = make_add(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxs, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
