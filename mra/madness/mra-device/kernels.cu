@@ -236,7 +236,7 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 template <typename T, Dimension NDIM>
 DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
  const T scalarA, const T scalarB, std::size_t K) {
-  
+
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   SHARED TensorView<T, NDIM> nA, nB, nR;
   if (is_t0) {
@@ -245,7 +245,7 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
     nR = TensorView<T, NDIM>(nodeR, K);
   }
   SYNCTHREADS()
-  
+
   foreach_idx(nA, [&](auto... idx) {
     nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
   });
@@ -254,16 +254,16 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
 template <typename T, Dimension NDIM>
 GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
  const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
-  
+
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
-  
+
   if (idxs[blockid] >= 0){
     int fbIdx = idxs[blockid];
     add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
-                             &nodeB[K2NDIM*fbIdx], 
-                             &nodeR[blockid],
+                             &nodeB[K2NDIM*fbIdx],
+                             &nodeR[K2NDIM*blockid],
                              scalarA, scalarB, K);
   }
 }
@@ -271,7 +271,7 @@ GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
 
 // funcA = [f0, f1, f2, f3];
 // funcB = [g0, g1, g2, g3];
-// idxs = [1, 2, 3, -1];  // index of functions in funcB to add to corresponding 
+// idxs = [1, 2, 3, -1];  // index of functions in funcB to add to corresponding
 // functions in funcA. -1 means no function to add
 
 // funcR = [{0, 1}, {1, 2}, {3, 0}]; // result of adding {funcA[i], funcB[idxs[i]]}
