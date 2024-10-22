@@ -140,7 +140,7 @@ void submit_gaxpy_kernel(
   const mra::TensorView<T, NDIM+1>& nodeA,
   const mra::TensorView<T, NDIM+1>& nodeB,
   mra::TensorView<T, NDIM+1>& nodeR,
-  const mra::TensorView<int, 1>& idxs,
+  const int* idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,

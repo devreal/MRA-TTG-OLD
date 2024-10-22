@@ -234,7 +234,7 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 }
 
 template <typename T, Dimension NDIM>
-DEVSCOPE void gaxpy_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
+DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
  const T scalarA, const T scalarB, std::size_t K) {
 
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
@@ -252,8 +252,8 @@ DEVSCOPE void gaxpy_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
 }
 
 template <typename T, Dimension NDIM>
-GLOBALSCOPE void gaxpy_kernel(const T *nodeA, const T *nodeB, T *nodeR,
- const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
+GLOBALSCOPE void gaxpy_kernel(const T* nodeA, const T* nodeB, T* nodeR,
+ const int* idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
 
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
@@ -282,7 +282,7 @@ void submit_gaxpy_kernel(
   const TensorView<T, NDIM+1>& funcA,
   const TensorView<T, NDIM+1>& funcB,
   TensorView<T, NDIM+1>& funcR,
-  const TensorView<int, 1>& idxs,
+  const int* idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
@@ -292,7 +292,7 @@ void submit_gaxpy_kernel(
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), idxs.data(), scalarA, scalarB, N, K, key));
+      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
     checkSubmit();
 }
 
@@ -305,7 +305,7 @@ void submit_gaxpy_kernel<double, 3>(
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,
   TensorView<double, 4>& funcR,
-  const TensorView<int, 1>& idxs,
+  const int* idxs,
   const double scalarA,
   const double scalarB,
   std::size_t K,

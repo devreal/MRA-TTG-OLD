@@ -447,8 +447,8 @@ template<typename T, mra::Dimension NDIM>
 auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-              const T scalarA, const T scalarB, const mra::TensorView<int, 1> idxs, const size_t N, const size_t K) {
-  auto func = [&, N, K, scalarA, scalarB](const mra::Key<NDIM>& key,
+              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
+  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](const mra::Key<NDIM>& key,
    const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
    -> TASKTYPE {
 
@@ -456,14 +456,14 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
     #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
-                                    out.coeffs().buffer());
+                                    out.coeffs().buffer(), idxBuf.buffer());
     #endif
 
     auto t1_view = t1.coeffs().current_view();
     auto t2_view = t2.coeffs().current_view();
     auto out_view = out.coeffs().current_view();
 
-    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs,
+    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
                                 scalarA, scalarB, N, K, ttg::device::current_stream());
 
     #ifndef TTG_ENABLE_HOST
@@ -473,7 +473,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
     #endif
     };
 
-  return ttg::make_tt<Space>(func, ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
+  return ttg::make_tt<Space>(std::move(func), ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
 }
 
 /**
@@ -509,7 +509,6 @@ void test(std::size_t N, std::size_t K) {
 
   int *idxs = new int[N];
   for (int i = 0; i < N; ++i) idxs[i] = i;
-  auto idxsT = mra::TensorView<int, 1>(idxs, N);
 
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
@@ -518,7 +517,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto add = make_gaxpy(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxsT, N, K);
+  auto add = make_gaxpy(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxs, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
