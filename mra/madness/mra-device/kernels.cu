@@ -282,7 +282,7 @@ void submit_add_kernel(
   const TensorView<T, NDIM+1>& funcA,
   const TensorView<T, NDIM+1>& funcB,
   TensorView<T, NDIM+1>& funcR,
-  const int* idxs,
+  const TensorView<int, 1>& idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
@@ -292,7 +292,7 @@ void submit_add_kernel(
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(add_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
+      (funcA.data(), funcB.data(), funcR.data(), idxs.data(), scalarA, scalarB, N, K, key));
     checkSubmit();
 }
 
@@ -305,7 +305,7 @@ void submit_add_kernel<double, 3>(
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,
   TensorView<double, 4>& funcR,
-  const int* idxs,
+  const TensorView<int, 1>& idxs,
   const double scalarA,
   const double scalarB,
   std::size_t K,

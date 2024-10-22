@@ -140,7 +140,7 @@ void submit_add_kernel(
   const mra::TensorView<T, NDIM+1>& nodeA,
   const mra::TensorView<T, NDIM+1>& nodeB,
   mra::TensorView<T, NDIM+1>& nodeR,
-  const int* idxs,
+  const mra::TensorView<int, 1>& idxs,
   const T scalarA,
   const T scalarB,
   std::size_t N,
