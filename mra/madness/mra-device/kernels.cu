@@ -234,7 +234,7 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 }
 
 template <typename T, Dimension NDIM>
-DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
+DEVSCOPE void gaxpy_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
  const T scalarA, const T scalarB, std::size_t K) {
 
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
@@ -252,7 +252,7 @@ DEVSCOPE void add_kernel_impl(const T *nodeA, const T *nodeB, T *nodeR,
 }
 
 template <typename T, Dimension NDIM>
-GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
+GLOBALSCOPE void gaxpy_kernel(const T *nodeA, const T *nodeB, T *nodeR,
  const int *idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
 
   const size_t K2NDIM = std::pow(K, NDIM);
@@ -261,7 +261,7 @@ GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
 
   if (idxs[blockid] >= 0){
     int fbIdx = idxs[blockid];
-    add_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
+    gaxpy_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
                              &nodeB[K2NDIM*fbIdx],
                              &nodeR[K2NDIM*blockid],
                              scalarA, scalarB, K);
@@ -277,7 +277,7 @@ GLOBALSCOPE void add_kernel(const T *nodeA, const T *nodeB, T *nodeR,
 // funcR = [{0, 1}, {1, 2}, {3, 0}]; // result of adding {funcA[i], funcB[idxs[i]]}
 
 template <typename T, Dimension NDIM>
-void submit_add_kernel(
+void submit_gaxpy_kernel(
   const Key<NDIM>& key,
   const TensorView<T, NDIM+1>& funcA,
   const TensorView<T, NDIM+1>& funcB,
@@ -291,7 +291,7 @@ void submit_add_kernel(
 
     Dim3 thread_dims = Dim3(K, K, 1);
 
-    CALL_KERNEL(add_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
       (funcA.data(), funcB.data(), funcR.data(), idxs.data(), scalarA, scalarB, N, K, key));
     checkSubmit();
 }
@@ -300,7 +300,7 @@ void submit_add_kernel(
  * Instantiate for 3D Gaussian
  */
 template
-void submit_add_kernel<double, 3>(
+void submit_gaxpy_kernel<double, 3>(
   const Key<3>& key,
   const TensorView<double, 4>& funcA,
   const TensorView<double, 4>& funcB,

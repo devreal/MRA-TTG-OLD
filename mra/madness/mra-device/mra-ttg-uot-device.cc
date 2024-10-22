@@ -444,7 +444,7 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
 }
 
 template<typename T, mra::Dimension NDIM>
-auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
+auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
               const T scalarA, const T scalarB, const mra::TensorView<int, 1> idxs, const size_t N, const size_t K) {
@@ -463,7 +463,7 @@ auto make_add(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>
     auto t2_view = t2.coeffs().current_view();
     auto out_view = out.coeffs().current_view();
 
-    submit_add_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs,
+    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxs,
                                 scalarA, scalarB, N, K, ttg::device::current_stream());
 
     #ifndef TTG_ENABLE_HOST
@@ -518,7 +518,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto add = make_add(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxsT, N, K);
+  auto add = make_gaxpy(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxsT, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);

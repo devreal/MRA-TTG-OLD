@@ -135,7 +135,7 @@ void submit_reconstruct_kernel(
  * add kernel
  */
 template <typename T, mra::Dimension NDIM>
-void submit_add_kernel(
+void submit_gaxpy_kernel(
   const mra::Key<NDIM>& key,
   const mra::TensorView<T, NDIM+1>& nodeA,
   const mra::TensorView<T, NDIM+1>& nodeB,
