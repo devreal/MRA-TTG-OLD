@@ -513,33 +513,89 @@ template<typename T, mra::Dimension NDIM>
 auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
-  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](const mra::Key<NDIM>& key,
-   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
-   -> TASKTYPE {
+              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K)
+{
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
 
-    auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](
+            const mra::Key<NDIM>& key,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t1,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
 
-    #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
-                                    out.coeffs().buffer(), idxBuf.buffer());
-    #endif
-
-    auto t1_view = t1.coeffs().current_view();
-    auto t2_view = t2.coeffs().current_view();
-    auto out_view = out.coeffs().current_view();
-
-    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
-                                scalarA, scalarB, N, K, ttg::device::current_stream());
-
-    #ifndef TTG_ENABLE_HOST
-        co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
-    else
-        ttg::send<0>(key, std::move(out));
-    #endif
+    auto sends = ttg::device::forward();
+    auto send_out = [&]<typename S>(S&& out){
+#ifndef TTG_ENABLE_HOST
+      co_await ttg::device::forward(ttg::device::send<0>(key, std::forward<S>(out)));
+#else
+      ttg::send<0>(key, std::forward<S>(out));
+#endif
     };
 
-  return ttg::make_tt<Space>(std::move(func), ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
+    if (t1.empty() && t2.empty()) {
+      /* send out an empty result */
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      send_out(std::move(out));
+    } else {
+
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+
+  #ifndef TTG_ENABLE_HOST
+      auto input = ttg::device::Input(out.coeffs().buffer(), idxBuf);
+      if (!t1.empty()) {
+        input.add(t1.coeffs().buffer());
+      }
+      if (!t2.empty()) {
+        input.add(t2.coeffs().buffer());
+      }
+      co_await ttg::device::select(input);
+  #endif
+      auto t1_view = t1.coeffs().current_view();
+      auto t2_view = t2.coeffs().current_view();
+      auto out_view = out.coeffs().current_view();
+
+      submit_gaxpy_kernel(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
+                          scalarA, scalarB, N, K, ttg::device::current_stream());
+
+      send_out(std::move(out));
+    }
+
+
+    /* balance trees if needed by sending empty nodes to missing inputs */
+    auto balance_trees = [&]<std::size_t I>(){
+      std::vector<mra::Key<NDIM>> child_keys;
+      for (auto child : children(key)) {
+        child_keys.push_back(child);
+      }
+      // TODO: do we care about the key here? if so we have to send instead
+      auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      // mark all functions as leafs
+      t.set_all_leaf(true);
+#ifndef TTG_ENABLE_HOST
+      sends.push_back(ttg::device::broadcast<I>(
+                        std::move(child_keys), std::move(t)));
+#else
+      ttg::broadcast<I>(std::move(child_keys), std::move(t));
+#endif // TTG_ENABLE_HOST
+    };
+
+    if (t1.is_all_leaf() && !t2.is_all_leaf()) {
+      /* broadcast an empty node for t1 to all children */
+      balance_trees.template operator()<1>();
+    } else if (!t1.is_all_leaf() && t2.is_all_leaf()) {
+      /* broadcast an empty node for t2 to all children */
+      balance_trees.template operator()<2>();
+    }
+
+#ifndef TTG_ENABLE_HOST
+    co_await sends;
+#endif // TTG_ENABLE_HOST
+  };
+
+  return ttg::make_tt<Space>(std::move(func),
+                             ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
+                             ttg::edges(out, S1, S2), "add",
+                             {"in1", "in2"},
+                             {"out", "S1", "S2"});
 }
 
 /**

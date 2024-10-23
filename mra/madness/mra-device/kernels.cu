@@ -234,9 +234,10 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 }
 
 template <typename T, Dimension NDIM>
-DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
- const T scalarA, const T scalarB, std::size_t K) {
-
+DEVSCOPE void gaxpy_kernel_impl(
+  const T* nodeA, const T* nodeB, T* nodeR,
+  const T scalarA, const T scalarB, std::size_t K)
+{
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   SHARED TensorView<T, NDIM> nA, nB, nR;
   if (is_t0) {
@@ -252,19 +253,21 @@ DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
 }
 
 template <typename T, Dimension NDIM>
-GLOBALSCOPE void gaxpy_kernel(const T* nodeA, const T* nodeB, T* nodeR,
- const int* idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
-
+GLOBALSCOPE void gaxpy_kernel(
+  const T* nodeA, const T* nodeB, T* nodeR,
+  const int* idxs, const T scalarA, const T scalarB,
+  std::size_t N, std::size_t K, const Key<NDIM>& key)
+{
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
 
   if (idxs[blockid] >= 0){
     int fbIdx = idxs[blockid];
-    gaxpy_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
-                             &nodeB[K2NDIM*fbIdx],
-                             &nodeR[K2NDIM*blockid],
-                             scalarA, scalarB, K);
+    gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
+                               nullptr == nodeB ? nullptr : &nodeB[K2NDIM*fbIdx],
+                               &nodeR[K2NDIM*blockid],
+                               scalarA, scalarB, K);
   }
 }
 
@@ -287,13 +290,13 @@ void submit_gaxpy_kernel(
   const T scalarB,
   std::size_t N,
   std::size_t K,
-  cudaStream_t stream){
+  cudaStream_t stream)
+{
+  Dim3 thread_dims = Dim3(K, K, 1);
 
-    Dim3 thread_dims = Dim3(K, K, 1);
-
-    CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
-    checkSubmit();
+  CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
+    (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
+  checkSubmit();
 }
 
 /**
