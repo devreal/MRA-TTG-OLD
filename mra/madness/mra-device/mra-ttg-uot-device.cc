@@ -249,7 +249,7 @@ static auto make_compress(
       auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
 #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
-                                   tmp_scratch, sumsqs_scratch,
+                                   tmp_scratch, d_sumsq_scratch,
                                    in0.coeffs().buffer(), in1.coeffs().buffer(),
                                    in2.coeffs().buffer(), in3.coeffs().buffer(),
                                    in4.coeffs().buffer(), in5.coeffs().buffer(),
@@ -443,6 +443,39 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
   return ttg::make_tt(func, ttg::edges(in), ttg::edges(), "printer", {"input"});
 }
 
+template<typename T, mra::Dimension NDIM>
+auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
+              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
+  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](const mra::Key<NDIM>& key,
+   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
+   -> TASKTYPE {
+
+    auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+
+    #ifndef TTG_ENABLE_HOST
+      co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
+                                    out.coeffs().buffer(), idxBuf.buffer());
+    #endif
+
+    auto t1_view = t1.coeffs().current_view();
+    auto t2_view = t2.coeffs().current_view();
+    auto out_view = out.coeffs().current_view();
+
+    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
+                                scalarA, scalarB, N, K, ttg::device::current_stream());
+
+    #ifndef TTG_ENABLE_HOST
+        co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
+    else
+        ttg::send<0>(key, std::move(out));
+    #endif
+    };
+
+  return ttg::make_tt<Space>(std::move(func), ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
+}
+
 /**
  * Test MRA projection with K coefficients in each of the NDIM dimension on
  * N random Gaussian functions.
@@ -457,7 +490,7 @@ void test(std::size_t N, std::size_t K) {
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, add_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result;
 
   // define N Gaussians
@@ -474,6 +507,9 @@ void test(std::size_t N, std::size_t K) {
     gaussians.emplace_back(D, expnt, r);
   }
 
+  int *idxs = new int[N];
+  for (int i = 0; i < N; ++i) idxs[i] = i;
+
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
@@ -481,9 +517,11 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
+  auto add = make_gaxpy(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxs, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
+  auto printer4 = make_printer(add_result, "added", false);
 
   auto connected = make_graph_executable(start.get());
   assert(connected);
@@ -501,6 +539,8 @@ void test(std::size_t N, std::size_t K) {
   }
   ttg::execute();
   ttg::fence();
+
+  delete[] idxs;
 
   if (ttg::default_execution_context().rank() == 0) {
     end = std::chrono::high_resolution_clock::now();

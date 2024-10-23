@@ -233,6 +233,86 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
   return slices;
 }
 
+template <typename T, Dimension NDIM>
+DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
+ const T scalarA, const T scalarB, std::size_t K) {
+
+  const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+  SHARED TensorView<T, NDIM> nA, nB, nR;
+  if (is_t0) {
+    nA = TensorView<T, NDIM>(nodeA, K);
+    nB = TensorView<T, NDIM>(nodeB, K);
+    nR = TensorView<T, NDIM>(nodeR, K);
+  }
+  SYNCTHREADS()
+
+  foreach_idx(nA, [&](auto... idx) {
+    nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
+  });
+}
+
+template <typename T, Dimension NDIM>
+GLOBALSCOPE void gaxpy_kernel(const T* nodeA, const T* nodeB, T* nodeR,
+ const int* idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
+
+  const size_t K2NDIM = std::pow(K, NDIM);
+  /* adjust pointers for the function of each block */
+  int blockid = blockIdx.x;
+
+  if (idxs[blockid] >= 0){
+    int fbIdx = idxs[blockid];
+    gaxpy_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
+                             &nodeB[K2NDIM*fbIdx],
+                             &nodeR[K2NDIM*blockid],
+                             scalarA, scalarB, K);
+  }
+}
+
+
+// funcA = [f0, f1, f2, f3];
+// funcB = [g0, g1, g2, g3];
+// idxs = [1, 2, 3, -1];  // index of functions in funcB to add to corresponding
+// functions in funcA. -1 means no function to add
+
+// funcR = [{0, 1}, {1, 2}, {3, 0}]; // result of adding {funcA[i], funcB[idxs[i]]}
+
+template <typename T, Dimension NDIM>
+void submit_gaxpy_kernel(
+  const Key<NDIM>& key,
+  const TensorView<T, NDIM+1>& funcA,
+  const TensorView<T, NDIM+1>& funcB,
+  TensorView<T, NDIM+1>& funcR,
+  const int* idxs,
+  const T scalarA,
+  const T scalarB,
+  std::size_t N,
+  std::size_t K,
+  cudaStream_t stream){
+
+    Dim3 thread_dims = Dim3(K, K, 1);
+
+    CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
+      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
+    checkSubmit();
+}
+
+/**
+ * Instantiate for 3D Gaussian
+ */
+template
+void submit_gaxpy_kernel<double, 3>(
+  const Key<3>& key,
+  const TensorView<double, 4>& funcA,
+  const TensorView<double, 4>& funcB,
+  TensorView<double, 4>& funcR,
+  const int* idxs,
+  const double scalarA,
+  const double scalarB,
+  std::size_t K,
+  std::size_t N,
+  cudaStream_t stream);
+
+
 template<typename Fn, typename T, Dimension NDIM>
 DEVSCOPE void fcoeffs_kernel_impl(
   const Domain<NDIM>& D,

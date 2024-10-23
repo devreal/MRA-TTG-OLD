@@ -131,4 +131,20 @@ void submit_reconstruct_kernel(
   T* tmp,
   ttg::device::Stream stream);
 
+/**
+ * add kernel
+ */
+template <typename T, mra::Dimension NDIM>
+void submit_gaxpy_kernel(
+  const mra::Key<NDIM>& key,
+  const mra::TensorView<T, NDIM+1>& nodeA,
+  const mra::TensorView<T, NDIM+1>& nodeB,
+  mra::TensorView<T, NDIM+1>& nodeR,
+  const int* idxs,
+  const T scalarA,
+  const T scalarB,
+  std::size_t N,
+  std::size_t K,
+  ttg::device::Stream stream);
+
 #endif // HAVE_KERNELS_H
