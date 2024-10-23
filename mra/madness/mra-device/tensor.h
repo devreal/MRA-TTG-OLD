@@ -33,8 +33,8 @@ namespace mra {
 
   private:
     using ttvalue_type = ttg::TTValue<Tensor<T, NDIM, Allocator>>;
-    dims_array_t m_dims;
-    buffer_type m_buffer;
+    dims_array_t m_dims = {0};
+    buffer_type  m_buffer;
 
     // (Re)allocate the tensor memory
     void realloc() {
@@ -122,6 +122,10 @@ namespace mra {
      * TODO: handle const correctness (const Tensor should return a const TensorView)*/
     const view_type current_view() const {
       return view_type(m_buffer.current_device_ptr(), m_dims);
+    }
+
+    bool empty() const {
+      return m_buffer.empty();
     }
 
     template <typename Archive>
