@@ -540,7 +540,7 @@ void test(std::size_t N, std::size_t K) {
   ttg::execute();
   ttg::fence();
 
-  // delete[] idxs;
+  delete[] idxs;
 
   if (ttg::default_execution_context().rank() == 0) {
     end = std::chrono::high_resolution_clock::now();
