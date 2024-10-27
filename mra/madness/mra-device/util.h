@@ -43,8 +43,6 @@ using Dim3 = mra::detail::dim3;
 #define CALL_KERNEL(name, block, thread, shared, stream, args) \
   name<<<block, thread, shared, stream>>> args
 
-#define THROW(s) do { std::fprintf(sterr, s); __trap(); } while(0)
-
 #else  // __CUDACC__
 #define checkSubmit()
 #define CALL_KERNEL(name, blocks, thread, shared, stream, args) do { \
@@ -54,8 +52,12 @@ using Dim3 = mra::detail::dim3;
       name args;                                \
     }                                           \
   } while (0)
-
-#define THROW(s) do { throw std::runtime_error(s); } while(0)
 #endif // __CUDACC__
+
+#if defined(__CUDA_ARCH__)
+#define THROW(s) do { std::printf(s); __trap(); } while(0)
+#else  // __CUDA_ARCH__
+#define THROW(s) do { throw std::runtime_error(s); } while(0)
+#endif // __CUDA_ARCH__
 
 #endif // MRA_DEVICE_UTIL_H

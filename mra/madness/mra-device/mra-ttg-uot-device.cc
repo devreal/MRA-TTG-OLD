@@ -44,13 +44,15 @@ auto make_project(
     using tensor_type = typename mra::Tensor<T, NDIM+1>;
     using key_type = typename mra::Key<NDIM>;
     using node_type = typename mra::FunctionsReconstructedNode<T, NDIM>;
-    auto result = node_type(key, N, K);
-    tensor_type& coeffs = result.coeffs();
+    node_type result(key, N); // empty for fast-paths, no need to zero out
     auto outputs = ttg::device::forward();
     auto* fn_arr = fb.host_ptr();
     bool all_initial_level = true;
     for (std::size_t i = 0; i < N; ++i) {
-      all_initial_level &= (key.level() < initial_level(fn_arr[i]));
+      if (key.level() >= initial_level(fn_arr[i])) {
+        all_initial_level = false;
+        break;
+      }
     }
     //std::cout << "project " << key << " all initial " << all_initial_level << std::endl;
     if (all_initial_level) {
@@ -64,7 +66,6 @@ auto make_project(
 #else
       ttg::broadcastk<0>(std::move(bcast_keys));
 #endif
-      coeffs.current_view() = T(1e7); // set to obviously bad value to detect incorrect use
       result.set_all_leaf(false);
     } else {
       bool all_negligible = true;
@@ -75,8 +76,6 @@ auto make_project(
       }
       //std::cout << "project " << key << " all negligible " << all_negligible << std::endl;
       if (all_negligible) {
-        /* zero coeffs */
-        coeffs.current_view() = T(0.0);
         result.set_all_leaf(true);
       } else {
         /* here we actually compute: first select a device */
@@ -85,6 +84,9 @@ auto make_project(
          * BEGIN FCOEFFS HERE
          * TODO: figure out a way to outline this into a function or coroutine
          */
+        // allocate tensor
+        result = node_type(key, N, K);
+        tensor_type& coeffs = result.coeffs();
 
         /* global function data */
         // TODO: need to make our own FunctionData with dynamic K
@@ -225,70 +227,102 @@ static auto make_compress(
     //typename ::detail::tree_types<T,K,NDIM>::compress_out_type& out) {
       constexpr const auto num_children = mra::Key<NDIM>::num_children();
       constexpr const auto out_terminal_id = num_children;
-      mra::FunctionsCompressedNode<T,NDIM> result(key, N, K); // The eventual result
-      auto& d = result.coeffs();
-      // allocate even though we might not need it
-      mra::FunctionsReconstructedNode<T, NDIM> p(key, N, K);
+      mra::FunctionsCompressedNode<T,NDIM> result(key, N); // The eventual result
+      // create empty, may be reset if needed
+      mra::FunctionsReconstructedNode<T, NDIM> p(key, N);
 
-      /* d and p don't have to be synchronized into the device */
-      d.buffer().reset_scope(ttg::scope::Allocate);
-      p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+      auto set_child_info = [&](mra::FunctionsCompressedNode<T, NDIM>& result){
+        for (std::size_t i = 0; i < N; ++i) {  // Collect child leaf info
+          result.is_child_leaf(i) = std::array{in0.is_leaf(i), in1.is_leaf(i), in2.is_leaf(i),
+                                               in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
+                                               in6.is_leaf(i), in7.is_leaf(i)};
+        }
+      };
 
-      for (std::size_t i = 0; i < N; ++i) {  // Collect child leaf info
-        result.is_child_leaf(i) = std::array{in0.is_leaf(i), in1.is_leaf(i), in2.is_leaf(i),
-                                             in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
-                                             in6.is_leaf(i), in7.is_leaf(i)};
-      }
+      /* check if all inputs are empty */
+      bool all_empty = in0.empty() && in1.empty() && in2.empty() && in3.empty() &&
+                       in4.empty() && in5.empty() && in6.empty() && in7.empty();
 
-      /* stores sumsq for each child and for result at the end of the kernel */
-      const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
-      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-      const auto& hgT = functiondata.get_hgT();
-      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-      auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
-      auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
-#ifndef TTG_ENABLE_HOST
-      co_await ttg::device::select(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
-                                   tmp_scratch, d_sumsq_scratch,
-                                   in0.coeffs().buffer(), in1.coeffs().buffer(),
-                                   in2.coeffs().buffer(), in3.coeffs().buffer(),
-                                   in4.coeffs().buffer(), in5.coeffs().buffer(),
-                                   in6.coeffs().buffer(), in7.coeffs().buffer());
-#endif
+      if (all_empty) {
+        set_child_info(result);
+        /* all data is still on the host so the coefficients are zero */
+        for (std::size_t i = 0; i < N; ++i) {
+          p.sum(i) = 0.0;
+        }
+        //std::cout << "compress " << key << " all empty " << std::endl;
+      } else {
 
-      /* some constness checks for the API */
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
-      static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
-      static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
+        /* some inputs are on the device so submit a kernel */
 
-      /* assemble input array and submit kernel */
-      //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
-      auto input_ptrs = std::array{in0.coeffs().buffer().current_device_ptr(), in1.coeffs().buffer().current_device_ptr(),
-                                   in2.coeffs().buffer().current_device_ptr(), in3.coeffs().buffer().current_device_ptr(),
-                                   in4.coeffs().buffer().current_device_ptr(), in5.coeffs().buffer().current_device_ptr(),
-                                   in6.coeffs().buffer().current_device_ptr(), in7.coeffs().buffer().current_device_ptr()};
+        // allocate the result
+        result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+        auto& d = result.coeffs();
+        set_child_info(result);
+        p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
 
-      auto coeffs_view = p.coeffs().current_view();
-      auto rcoeffs_view = d.current_view();
-      auto hgT_view = hgT.current_view();
+        /* d and p don't have to be synchronized into the device */
+        d.buffer().reset_scope(ttg::scope::Allocate);
+        p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
 
-      submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                            tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
-                            ttg::device::current_stream());
+        /* stores sumsq for each child and for result at the end of the kernel */
+        const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
+        auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+        const auto& hgT = functiondata.get_hgT();
+        auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+        auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
+        auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
+  #ifndef TTG_ENABLE_HOST
+        auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
+                                        tmp_scratch, d_sumsq_scratch);
+        auto select_in = [&](const auto& in) {
+          if (!in.empty()) {
+            input.add(in.coeffs().buffer());
+          }
+        };
+        select_in(in0); select_in(in1);
+        select_in(in2); select_in(in3);
+        select_in(in4); select_in(in5);
+        select_in(in6); select_in(in7);
 
-      /* wait for kernel and transfer sums back */
-#ifndef TTG_ENABLE_HOST
-      co_await ttg::device::wait(d_sumsq_scratch);
-#endif
+        co_await ttg::device::select(input);
+  #endif
 
-      for (std::size_t i = 0; i < N; ++i) {
-        auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
-                                  in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
-        auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
-        p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
-        //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
-        //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+        /* some constness checks for the API */
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
+        static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
+        static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
+
+        /* assemble input array and submit kernel */
+        //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
+        auto get_ptr = [](const auto& in) {
+          return in.empty() ? nullptr : in.coeffs().buffer().current_device_ptr();
+        };
+        auto input_ptrs = std::array{get_ptr(in0), get_ptr(in1), get_ptr(in2), get_ptr(in3),
+                                     get_ptr(in4), get_ptr(in5), get_ptr(in6), get_ptr(in7)};
+
+        auto coeffs_view = p.coeffs().current_view();
+        auto rcoeffs_view = d.current_view();
+        auto hgT_view = hgT.current_view();
+
+        submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
+                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
+                              ttg::device::current_stream());
+
+        /* wait for kernel and transfer sums back */
+  #ifndef TTG_ENABLE_HOST
+        co_await ttg::device::wait(d_sumsq_scratch);
+  #endif
+
+        for (std::size_t i = 0; i < N; ++i) {
+          auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
+                                   in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
+          auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
+          p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
+          //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
+          //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+        }
+
       }
 
       // Recur up
@@ -307,7 +341,7 @@ static auto make_compress(
 #endif
       } else {
         for (std::size_t i = 0; i < N; ++i) {
-          std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) + d_sumsq[i] << std::endl;
+          std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) << std::endl;
         }
 #ifndef TTG_ENABLE_HOST
         co_await ttg::device::forward(
@@ -318,7 +352,6 @@ static auto make_compress(
 #endif
       }
   };
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> recur("recur");
   return std::make_tuple(ttg::make_tt<Space>(&do_send_leafs_up<T,NDIM>, edges(in), send_to_compress_edges, "send_leaves_up"),
                          ttg::make_tt<Space>(std::move(do_compress), send_to_compress_edges, compress_out_edges, "do_compress"));
 }
@@ -332,42 +365,96 @@ auto make_reconstruct(
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
   const std::string& name = "reconstruct")
 {
-  ttg::Edge<mra::Key<NDIM>, mra::Tensor<T,NDIM+1>> S("S");  // passes scaling functions down
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,NDIM>> S("S");  // passes scaling functions down
 
   auto do_reconstruct = [&, N, K](const mra::Key<NDIM>& key,
                                   mra::FunctionsCompressedNode<T, NDIM>&& node,
-                                  const mra::Tensor<T, NDIM+1>& from_parent) -> TASKTYPE {
-    const std::size_t K = from_parent.dim(0);
+                                  const mra::FunctionsReconstructedNode<T, NDIM>& from_parent) -> TASKTYPE {
     const std::size_t tmp_size = reconstruct_tmp_size<NDIM>(K)*N;
     auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
     const auto& hg = functiondata.get_hg();
     auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+    mra::KeyChildren<NDIM> children(key);
+
+    bool node_empty = node.empty();
 
     // Send empty interior node to result tree
-    auto r_empty = mra::FunctionsReconstructedNode<T,NDIM>(key, N, K);
-    r_empty.coeffs().current_view() = T(0.0);
+    auto r_empty = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
     r_empty.set_all_leaf(false);
+#ifndef TTG_ENABLE_HOST
+    // forward() returns a vector that we can push into
+    auto sends = ttg::device::forward(ttg::device::send<1>(key, std::move(r_empty)));
+    auto do_send = [&]<std::size_t I, typename S>(auto& child, S&& node) {
+          sends.push_back(ttg::device::send<I>(child, std::forward<S>(node)));
+    };
+#else
+    ttg::send<1>(key, std::move(r_empty));
+    auto do_send = []<std::size_t I, typename S>(auto& child, S&& node) {
+      ttg::send<I>(child, std::forward<S>(node));
+    };
+#endif // TTG_ENABLE_HOST
+
+    // array of child nodes
+    std::array<mra::FunctionsReconstructedNode<T,NDIM>, mra::Key<NDIM>::num_children()> r_arr;
+    for (auto it=children.begin(); it!=children.end(); ++it) {
+      const mra::Key<NDIM> child= *it;
+      auto& r = r_arr[it.index()];
+      r = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
+      for (std::size_t i = 0; i < N; ++i) {
+        r.is_leaf(i) = node.is_child_leaf(i, it.index());
+      }
+    }
+
+    if (node.empty() && from_parent.empty()) {
+      //std::cout << "reconstruct " << key << " node and parent empty " << std::endl;
+      /* both the node and the parent are empty so we can shortcut with empty results */
+      for (auto it=children.begin(); it!=children.end(); ++it) {
+        const mra::Key<NDIM> child= *it;
+        auto& r = r_arr[it.index()];
+        if (r.is_all_leaf()) {
+          do_send.template operator()<1>(child, std::move(r));
+        } else {
+          do_send.template operator()<0>(child, std::move(r));
+        }
+      }
+#ifndef TTG_ENABLE_HOST
+      // won't return
+      co_await std::move(sends);
+      assert(0);
+#else  // TTG_ENABLE_HOST
+      return; // we're done
+#endif // TTG_ENABLE_HOST
+    } else if (node.empty()) {
+      /* parent node not empty so allocate a new compressed node */
+      //std::cout << "reconstruct " << key << " allocating previously empoty node " << std::endl;
+      node.allocate(K);
+      node.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+    }
+
+    /* once we are here we know we need to invoke the reconstruct kernel */
 
     /* populate the vector of r's
      * TODO: TTG/PaRSEC supports only a limited number of inputs so for higher dimensions
      *       we may have to consolidate the r's into a single buffer and pick them apart afterwards.
      *       That will require the ability to ref-count 'parent buffers'. */
-    std::array<mra::FunctionsReconstructedNode<T,NDIM>, mra::Key<NDIM>::num_children()> r_arr;
     for (int i = 0; i < key.num_children(); ++i) {
-      r_arr[i] = mra::FunctionsReconstructedNode<T,NDIM>(key, N, K);
+      r_arr[i].allocate(K);
       // no need to send this data to the device
       r_arr[i].coeffs().buffer().reset_scope(ttg::scope::Allocate);
     }
 
-    // helper lambda to pick apart the std::array
-    auto do_select = [&]<std::size_t... Is>(std::index_sequence<Is...>){
-      return ttg::device::select(hg.buffer(), from_parent.buffer(),
-                                 node.coeffs().buffer(), tmp_scratch,
-                                 (r_arr[Is].coeffs().buffer())...);
-    };
-    /* select a device */
 #ifndef TTG_ENABLE_HOST
-    co_await do_select(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    // helper lambda to pick apart the std::array
+    auto make_inputs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
+      return ttg::device::Input(hg.buffer(), node.coeffs().buffer(), tmp_scratch,
+                                (r_arr[Is].coeffs().buffer())...);
+    };
+    auto inputs = make_inputs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    if (!from_parent.empty()) {
+      inputs.add(from_parent.coeffs().buffer());
+    }
+    /* select a device */
+    co_await ttg::device::select(inputs);
 #endif
 
     // helper lambda to pick apart the std::array
@@ -377,46 +464,22 @@ auto make_reconstruct(
     auto r_ptrs = assemble_tensor_ptrs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     auto node_view = node.coeffs().current_view();
     auto hg_view = hg.current_view();
-    auto from_parent_view = from_parent.current_view();
-    submit_reconstruct_kernel(key, N, K, node_view, hg_view, from_parent_view,
+    auto from_parent_view = from_parent.coeffs().current_view();
+    submit_reconstruct_kernel(key, N, K, node_view, node_empty, hg_view, from_parent_view,
                               r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
 
-    // forward() returns a vector that we can push into
+    for (auto it=children.begin(); it!=children.end(); ++it) {
+      const mra::Key<NDIM> child= *it;
+      mra::FunctionsReconstructedNode<T,NDIM>& r = r_arr[it.index()];
+      r.key() = child;
+      if (r.is_all_leaf()) {
+        do_send.template operator()<1>(child, std::move(r));
+      } else {
+        do_send.template operator()<0>(child, std::move(r));
+      }
+    }
 #ifndef TTG_ENABLE_HOST
-    auto sends = ttg::device::forward(ttg::device::send<1>(key, std::move(r_empty)));
-    mra::KeyChildren<NDIM> children(key);
-    for (auto it=children.begin(); it!=children.end(); ++it) {
-        const mra::Key<NDIM> child= *it;
-        mra::FunctionsReconstructedNode<T,NDIM>& r = r_arr[it.index()];
-        r.key() = child;
-        for (std::size_t i = 0; i < N; ++i) {
-          r.is_leaf(i) = node.is_child_leaf(i, it.index());
-        }
-        if (r.is_all_leaf()) {
-          sends.push_back(ttg::device::send<1>(child, std::move(r)));
-        }
-        else {
-          sends.push_back(ttg::device::send<0>(child, std::move(r.coeffs())));
-        }
-    }
     co_await std::move(sends);
-#else
-    ttg::send<1>(key, std::move(r_empty));
-    mra::KeyChildren<NDIM> children(key);
-    for (auto it=children.begin(); it!=children.end(); ++it) {
-        const mra::Key<NDIM> child= *it;
-        mra::FunctionsReconstructedNode<T,NDIM>& r = r_arr[it.index()];
-        r.key() = child;
-        for (std::size_t i = 0; i < N; ++i) {
-          r.is_leaf(i) = node.is_child_leaf(i, it.index());
-        }
-        if (r.is_all_leaf()) {
-          ttg::send<1>(child, std::move(r));
-        }
-        else {
-          ttg::send<0>(child, std::move(r.coeffs()));
-        }
-    }
 #endif // TTG_ENABLE_HOST
   };
 
@@ -424,7 +487,8 @@ auto make_reconstruct(
   auto s = ttg::make_tt<Space>(std::move(do_reconstruct), ttg::edges(in, S), ttg::edges(S, out), name, {"input", "s"}, {"s", "output"});
 
   if (ttg::default_execution_context().rank() == 0) {
-    s->template in<1>()->send(mra::Key<NDIM>{0,{0}}, mra::Tensor<T,NDIM+1>(N, K, K, K)); // Prime the flow of scaling functions
+    s->template in<1>()->send(mra::Key<NDIM>{0,{0}},
+                              mra::FunctionsReconstructedNode<T,NDIM>(mra::Key<NDIM>{0,{0}}, N)); // Prime the flow of scaling functions
   }
 
   return s;
@@ -435,6 +499,8 @@ static std::mutex printer_guard;
 template <typename keyT, typename valueT>
 auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const bool doprint=true) {
   auto func = [str,doprint](const keyT& key, const valueT& value) {
+    // sanity check
+    assert(value.coeffs().buffer().get_owner_device().is_host());
     if (doprint) {
       std::lock_guard<std::mutex> obolus(printer_guard);
       std::cout << str << " (" << key << "," << value << ")" << std::endl;
@@ -447,33 +513,89 @@ template<typename T, mra::Dimension NDIM>
 auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K) {
-  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](const mra::Key<NDIM>& key,
-   const mra::FunctionsReconstructedNode<T, NDIM>& t1, const mra::FunctionsReconstructedNode<T, NDIM>& t2)
-   -> TASKTYPE {
+              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K)
+{
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
 
-    auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](
+            const mra::Key<NDIM>& key,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t1,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
 
-    #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::select(in1.coeffs().buffer(), in2.coeffs().buffer(),
-                                    out.coeffs().buffer(), idxBuf.buffer());
-    #endif
-
-    auto t1_view = t1.coeffs().current_view();
-    auto t2_view = t2.coeffs().current_view();
-    auto out_view = out.coeffs().current_view();
-
-    submit_gaxpy_kernel<T, NDIM>(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
-                                scalarA, scalarB, N, K, ttg::device::current_stream());
-
-    #ifndef TTG_ENABLE_HOST
-        co_await ttg::device::forward(ttg::device::send<0>(key, std::move(out)));
-    else
-        ttg::send<0>(key, std::move(out));
-    #endif
+    auto sends = ttg::device::forward();
+    auto send_out = [&]<typename S>(S&& out){
+#ifndef TTG_ENABLE_HOST
+      co_await ttg::device::forward(ttg::device::send<0>(key, std::forward<S>(out)));
+#else
+      ttg::send<0>(key, std::forward<S>(out));
+#endif
     };
 
-  return ttg::make_tt<Space>(std::move(func), ttg::edges(in1, in2), ttg::edges(out), "add", {"in1", "in2"}, {"out"});
+    if (t1.empty() && t2.empty()) {
+      /* send out an empty result */
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      send_out(std::move(out));
+    } else {
+
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+
+  #ifndef TTG_ENABLE_HOST
+      auto input = ttg::device::Input(out.coeffs().buffer(), idxBuf);
+      if (!t1.empty()) {
+        input.add(t1.coeffs().buffer());
+      }
+      if (!t2.empty()) {
+        input.add(t2.coeffs().buffer());
+      }
+      co_await ttg::device::select(input);
+  #endif
+      auto t1_view = t1.coeffs().current_view();
+      auto t2_view = t2.coeffs().current_view();
+      auto out_view = out.coeffs().current_view();
+
+      submit_gaxpy_kernel(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
+                          scalarA, scalarB, N, K, ttg::device::current_stream());
+
+      send_out(std::move(out));
+    }
+
+
+    /* balance trees if needed by sending empty nodes to missing inputs */
+    auto balance_trees = [&]<std::size_t I>(){
+      std::vector<mra::Key<NDIM>> child_keys;
+      for (auto child : children(key)) {
+        child_keys.push_back(child);
+      }
+      // TODO: do we care about the key here? if so we have to send instead
+      auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      // mark all functions as leafs
+      t.set_all_leaf(true);
+#ifndef TTG_ENABLE_HOST
+      sends.push_back(ttg::device::broadcast<I>(
+                        std::move(child_keys), std::move(t)));
+#else
+      ttg::broadcast<I>(std::move(child_keys), std::move(t));
+#endif // TTG_ENABLE_HOST
+    };
+
+    if (t1.is_all_leaf() && !t2.is_all_leaf()) {
+      /* broadcast an empty node for t1 to all children */
+      balance_trees.template operator()<1>();
+    } else if (!t1.is_all_leaf() && t2.is_all_leaf()) {
+      /* broadcast an empty node for t2 to all children */
+      balance_trees.template operator()<2>();
+    }
+
+#ifndef TTG_ENABLE_HOST
+    co_await sends;
+#endif // TTG_ENABLE_HOST
+  };
+
+  return ttg::make_tt<Space>(std::move(func),
+                             ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
+                             ttg::edges(out, S1, S2), "add",
+                             {"in1", "in2"},
+                             {"out", "S1", "S2"});
 }
 
 /**

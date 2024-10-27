@@ -412,16 +412,22 @@ namespace mra {
     SCOPE value_type& operator()(Dims... idxs) {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return m_ptr[offset(std::forward<Dims>(idxs)...)];
     }
 
     /* access host-side elements */
     template<typename... Dims>
     requires(std::is_integral_v<Dims>&&...)
-    SCOPE const value_type& operator()(Dims... idxs) const {
+    SCOPE const value_type operator()(Dims... idxs) const {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
-      return m_ptr[offset(std::forward<Dims>(idxs)...)];
+      // let's hope the compiler will hoist this out of loops
+      if (m_ptr == nullptr) {
+        return T(0);
+      } else {
+        return m_ptr[offset(std::forward<Dims>(idxs)...)];
+      }
     }
 
     SCOPE value_type* data() {
@@ -444,6 +450,7 @@ namespace mra {
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator=(const value_type& value) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       foreach_idx(*this, [&](auto... args){ this->operator()(args...) = value; });
       return *this;
     }
@@ -452,6 +459,7 @@ namespace mra {
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator*=(const value_type& value) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       foreach_idx(*this, [&](auto... args){ this->operator()(args...) *= value; });
       return *this;
     }
@@ -460,7 +468,12 @@ namespace mra {
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator=(const TensorView<T, NDIM>& other) {
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
+      if (other.m_ptr == nullptr) {
+        foreach_idx(*this, [&](auto... args){ this->operator()(args...) = 0; });
+      } else {
+        foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
+      }
       return *this;
     }
 
@@ -469,15 +482,18 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     template<typename TensorViewT>
     SCOPE TensorView& operator=(const TensorSlice<TensorViewT>& other) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
       return *this;
     }
 
     SCOPE TensorSlice<TensorView> operator()(const std::array<Slice, NDIM>& slices) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return TensorSlice<TensorView>(*this, slices);
     }
 
     SCOPE TensorSlice<TensorView> get_slice(const std::array<Slice, NDIM>& slices) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return TensorSlice<TensorView>(*this, slices);
     }
 

@@ -234,9 +234,10 @@ std::array<Slice, NDIM> get_child_slice(Key<NDIM> key, std::size_t K, int child)
 }
 
 template <typename T, Dimension NDIM>
-DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
- const T scalarA, const T scalarB, std::size_t K) {
-
+DEVSCOPE void gaxpy_kernel_impl(
+  const T* nodeA, const T* nodeB, T* nodeR,
+  const T scalarA, const T scalarB, std::size_t K)
+{
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   SHARED TensorView<T, NDIM> nA, nB, nR;
   if (is_t0) {
@@ -252,19 +253,21 @@ DEVSCOPE void gaxpy_kernel_impl(const T* nodeA, const T* nodeB, T* nodeR,
 }
 
 template <typename T, Dimension NDIM>
-GLOBALSCOPE void gaxpy_kernel(const T* nodeA, const T* nodeB, T* nodeR,
- const int* idxs, const T scalarA, const T scalarB, std::size_t N, std::size_t K, const Key<NDIM>& key) {
-
+GLOBALSCOPE void gaxpy_kernel(
+  const T* nodeA, const T* nodeB, T* nodeR,
+  const int* idxs, const T scalarA, const T scalarB,
+  std::size_t N, std::size_t K, const Key<NDIM>& key)
+{
   const size_t K2NDIM = std::pow(K, NDIM);
   /* adjust pointers for the function of each block */
   int blockid = blockIdx.x;
 
   if (idxs[blockid] >= 0){
     int fbIdx = idxs[blockid];
-    gaxpy_kernel_impl<T, NDIM>(&nodeA[K2NDIM*blockid],
-                             &nodeB[K2NDIM*fbIdx],
-                             &nodeR[K2NDIM*blockid],
-                             scalarA, scalarB, K);
+    gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
+                               nullptr == nodeB ? nullptr : &nodeB[K2NDIM*fbIdx],
+                               &nodeR[K2NDIM*blockid],
+                               scalarA, scalarB, K);
   }
 }
 
@@ -287,13 +290,13 @@ void submit_gaxpy_kernel(
   const T scalarB,
   std::size_t N,
   std::size_t K,
-  cudaStream_t stream){
+  cudaStream_t stream)
+{
+  Dim3 thread_dims = Dim3(K, K, 1);
 
-    Dim3 thread_dims = Dim3(K, K, 1);
-
-    CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
-    checkSubmit();
+  CALL_KERNEL(gaxpy_kernel, N, thread_dims, 0, stream,
+    (funcA.data(), funcB.data(), funcR.data(), idxs, scalarA, scalarB, N, K, key));
+  checkSubmit();
 }
 
 /**
@@ -606,7 +609,7 @@ GLOBALSCOPE void compress_kernel(
   SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
   if (is_t0) {
     for (std::size_t i = 0; i < Key<NDIM>::num_children(); ++i) {
-      block_in_ptrs[i] = &in_ptrs[i][K2NDIM*blockid];
+      block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockid] : nullptr;
     }
   }
   /* no need to sync threads here */
@@ -713,6 +716,7 @@ DEVSCOPE void reconstruct_kernel_impl(
   Key<NDIM> key,
   std::size_t K,
   T* node_ptr,
+  bool node_empty,
   T* tmp_ptr,
   const T* hg_ptr,
   const T* from_parent_ptr,
@@ -731,6 +735,11 @@ DEVSCOPE void reconstruct_kernel_impl(
   }
   SYNCTHREADS();
   s = 0.0;
+
+  if (node_empty) {
+    /* if the node was empty we reset it to zero */
+    node = 0.0;
+  }
 
   auto child_slice = get_child_slice<NDIM>(key, K, 0);
   if (key.level() != 0) node(child_slice) = from_parent;
@@ -755,6 +764,7 @@ GLOBALSCOPE void reconstruct_kernel(
   std::size_t N,
   std::size_t K,
   T* node_ptr,
+  bool node_empty,
   T* tmp_ptr,
   const T* hg_ptr,
   const T* from_parent_ptr,
@@ -773,7 +783,7 @@ GLOBALSCOPE void reconstruct_kernel(
     }
   }
   /* no need to sync threads here, the impl will sync before the r_arr are used */
-  reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid],
+  reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid], node_empty,
                           tmp_ptr + blockid*reconstruct_tmp_size<NDIM>(K),
                           hg_ptr, &from_parent_ptr[K2NDIM*blockid],
                           block_r_arr);
@@ -785,6 +795,7 @@ void submit_reconstruct_kernel(
   std::size_t N,
   std::size_t K,
   TensorView<T, NDIM+1>& node,
+  bool node_empty,
   const TensorView<T, 2>& hg,
   const TensorView<T, NDIM+1>& from_parent,
   const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
@@ -794,7 +805,7 @@ void submit_reconstruct_kernel(
   /* runs on a single block */
   Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
   CALL_KERNEL(reconstruct_kernel, N, thread_dims, 0, stream,
-    (key, N, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
+    (key, N, K, node.data(), node_empty, tmp, hg.data(), from_parent.data(), r_arr));
   checkSubmit();
 }
 
@@ -804,6 +815,7 @@ GLOBALSCOPE void reconstruct_kernel(
   Key<NDIM> key,
   std::size_t K,
   T* node_ptr,
+  bool node_empty,
   T* tmp_ptr,
   const T* hg_ptr,
   const T* from_parent_ptr,
@@ -813,7 +825,7 @@ GLOBALSCOPE void reconstruct_kernel(
   const size_t K2NDIM    = std::pow(  K,NDIM);
 
   /* no need to sync threads here, the impl will sync before the r_arr are used */
-  reconstruct_kernel_impl(key, K, node_ptr, tmp_ptr,
+  reconstruct_kernel_impl(key, K, node_ptr, node_empty, tmp_ptr,
                           hg_ptr, from_parent_ptr, r_arr);
 }
 
@@ -822,6 +834,7 @@ void submit_reconstruct_kernel(
   const Key<NDIM>& key,
   std::size_t K,
   TensorView<T, NDIM>& node,
+  bool node_empty,
   const TensorView<T, 2>& hg,
   const TensorView<T, NDIM>& from_parent,
   const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
@@ -831,7 +844,7 @@ void submit_reconstruct_kernel(
   /* runs on a single block */
   Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
   CALL_KERNEL(reconstruct_kernel, 1, thread_dims, 0, stream,
-    (key, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
+    (key, K, node.data(), node_empty, tmp, hg.data(), from_parent.data(), r_arr));
   checkSubmit();
 }
 
@@ -842,6 +855,7 @@ void submit_reconstruct_kernel<double, 3>(
   std::size_t N,
   std::size_t K,
   TensorView<double, 3+1>& node,
+  bool node_empty,
   const TensorView<double, 2>& hg,
   const TensorView<double, 4>& from_parent,
   const std::array<double*, Key<3>::num_children()>& r_arr,
@@ -854,6 +868,7 @@ void submit_reconstruct_kernel<double, 3>(
   const Key<3>& key,
   std::size_t K,
   TensorView<double, 3>& node,
+  bool node_empty,
   const TensorView<double, 2>& hg,
   const TensorView<double, 3>& from_parent,
   const std::array<double*, Key<3>::num_children()>& r_arr,

@@ -130,12 +130,38 @@ namespace mra {
 
       public:
         FunctionsReconstructedNode() = default;
+
+        /* constructs a node with metadata for N functions and all coefficients zero */
+        FunctionsReconstructedNode(const Key<NDIM>& key, std::size_t N)
+        : m_key(key)
+        , m_metadata(N)
+        , m_coeffs()
+        { }
+
         FunctionsReconstructedNode(const Key<NDIM>& key, std::size_t N, std::size_t K)
         : m_key(key)
         , m_metadata(N)
         , m_coeffs(detail::make_dims<NDIM+1>(N, K))
         {}
-        //T normf() const {return (is_leaf ? coeffs.normf() : 0.0);}
+
+
+        FunctionsReconstructedNode(FunctionsReconstructedNode&& other) = default;
+        FunctionsReconstructedNode(const FunctionsReconstructedNode& other) = delete;
+
+        FunctionsReconstructedNode& operator=(FunctionsReconstructedNode&& other) = default;
+        FunctionsReconstructedNode& operator=(const FunctionsReconstructedNode& other) = delete;
+
+        /**
+         * Allocate space for coefficients using K.
+         * The node must be empty before and will not be empty afterwards.
+         */
+        void allocate(std::size_t K) {
+          if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
+          std::size_t N = m_metadata.size();
+          if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
+          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
+        }
+
         bool has_children(std::size_t i) const {
           return !m_metadata[i].is_leaf;
         }
@@ -225,6 +251,10 @@ namespace mra {
           return m_metadata.size();
         }
 
+        bool empty() const {
+          return m_coeffs.empty();
+        }
+
         template <typename Archive>
         void serialize(Archive& ar) {
           throw std::runtime_error("FunctionsCompressedNode::serialize not yet implemented");
@@ -257,15 +287,36 @@ namespace mra {
 
       public:
         FunctionsCompressedNode() = default; // needed for serialization
-        FunctionsCompressedNode(std::size_t N, std::size_t K)
-        : m_coeffs(detail::make_dims<NDIM+1>(N, 2*K))
+
+        /* constructs a node for N functions with zero coefficients */
+        FunctionsCompressedNode(const Key<NDIM>& key, std::size_t N)
+        : m_key(key)
+        , m_coeffs()
         , m_is_child_leafs(N)
         { }
+
         FunctionsCompressedNode(const Key<NDIM>& key, std::size_t N, std::size_t K)
         : m_key(key)
         , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K))
         , m_is_child_leafs(N)
         { }
+
+        /**
+         * Allocate space for coefficients using K.
+         * The node must be empty before and will not be empty afterwards.
+         */
+        void allocate(std::size_t K) {
+          if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
+          std::size_t N = m_is_child_leafs.size();
+          if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
+          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
+        }
+
+        FunctionsCompressedNode(FunctionsCompressedNode&& other) = default;
+        FunctionsCompressedNode(const FunctionsCompressedNode& other) = delete;
+
+        FunctionsCompressedNode& operator=(FunctionsCompressedNode&& other) = default;
+        FunctionsCompressedNode& operator=(const FunctionsCompressedNode& other) = delete;
 
         bool has_children(std::size_t i, size_t childindex) const {
             assert(childindex < Key<NDIM>::num_children());
@@ -280,7 +331,6 @@ namespace mra {
         bool is_child_leaf(std::size_t i, std::size_t child) const {
           return m_is_child_leafs[i][child];
         }
-
 
         auto& coeffs() {
           return m_coeffs;
@@ -300,6 +350,10 @@ namespace mra {
 
         std::size_t count() const {
           return m_is_child_leafs.size();
+        }
+
+        bool empty() const {
+          return m_coeffs.empty();
         }
 
         view_type coeffs_view(std::size_t i) {
