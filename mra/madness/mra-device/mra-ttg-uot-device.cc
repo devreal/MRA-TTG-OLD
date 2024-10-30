@@ -525,7 +525,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
 #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::forward(ttg::device::send<0>(key, std::forward<S>(out)));
+      sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
 #else
       ttg::send<0>(key, std::forward<S>(out));
 #endif
@@ -587,7 +587,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
     }
 
 #ifndef TTG_ENABLE_HOST
-    co_await sends;
+    co_await std::move(sends);
 #endif // TTG_ENABLE_HOST
   };
 

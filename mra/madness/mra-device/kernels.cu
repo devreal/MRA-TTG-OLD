@@ -245,7 +245,7 @@ DEVSCOPE void gaxpy_kernel_impl(
     nB = TensorView<T, NDIM>(nodeB, K);
     nR = TensorView<T, NDIM>(nodeR, K);
   }
-  SYNCTHREADS()
+  SYNCTHREADS();
 
   foreach_idx(nA, [&](auto... idx) {
     nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
