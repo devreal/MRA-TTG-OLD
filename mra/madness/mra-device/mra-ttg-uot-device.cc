@@ -500,7 +500,7 @@ template <typename keyT, typename valueT>
 auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const bool doprint=true) {
   auto func = [str,doprint](const keyT& key, const valueT& value) {
     // sanity check
-    assert(value.coeffs().buffer().get_owner_device().is_host());
+    assert(value.coeffs().buffer().is_current_on(ttg::device::Device()));
     if (doprint) {
       std::lock_guard<std::mutex> obolus(printer_guard);
       std::cout << str << " (" << key << "," << value << ")" << std::endl;
