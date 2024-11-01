@@ -9,6 +9,7 @@
 #include "functions.h"
 #include "util.h"
 #include "functionfunctor.h"
+#include "helper.h"
 
 template<typename T>
 struct type_printer;
@@ -73,50 +74,6 @@ SCOPE bool is_negligible(
     else return false;
 }
 #endif // 0
-
-/// Make outer product of quadrature points for vectorized algorithms
-template<typename T>
-SCOPE void make_xvec(const TensorView<T,2>& x, TensorView<T,2>& xvec,
-                          std::integral_constant<Dimension, 1>) {
-  /* uses threads in 3 dimensions */
-  xvec = x;
-  /* TensorView assignment synchronizes */
-}
-
-/// Make outer product of quadrature points for vectorized algorithms
-template<typename T>
-SCOPE void make_xvec(const TensorView<T,2>& x, TensorView<T,2>& xvec,
-                          std::integral_constant<Dimension, 2>) {
-  const std::size_t K = x.dim(1);
-  if (threadIdx.z == 0) {
-    for (size_t i=threadIdx.y; i<K; i += blockDim.y) {
-      for (size_t j=threadIdx.x; j<K; j += blockDim.x) {
-        size_t ij = i*K + j;
-        xvec(0,ij) = x(0,i);
-        xvec(1,ij) = x(1,j);
-      }
-    }
-  }
-  SYNCTHREADS();
-}
-
-/// Make outer product of quadrature points for vectorized algorithms
-template<typename T>
-SCOPE void make_xvec(const TensorView<T,2>& x, TensorView<T,2>& xvec,
-                          std::integral_constant<Dimension, 3>) {
-  const std::size_t K = x.dim(1);
-  for (size_t i=threadIdx.z; i<K; i += blockDim.z) {
-    for (size_t j=threadIdx.y; j<K; j += blockDim.y) {
-      for (size_t k=threadIdx.x; k<K; k += blockDim.x) {
-        size_t ijk = i*K*K + j*K + k;
-        xvec(0,ijk) = x(0,i);
-        xvec(1,ijk) = x(1,j);
-        xvec(2,ijk) = x(2,k);
-      }
-    }
-  }
-  SYNCTHREADS();
-}
 
 
 template <typename functorT, typename T, Dimension NDIM>
@@ -315,6 +272,33 @@ void submit_gaxpy_kernel<double, 3>(
   std::size_t N,
   cudaStream_t stream);
 
+template <typename T, Dimension NDIM>
+DEVSCOPE void mul_kernel_impl(
+  const T* nodeA, const T* nodeB, T* nodeR,
+  const T* gldata, std::size_t K, Key<NDIM> key)
+{
+  const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+  SHARED TensorView<T, NDIM> nA, nB, nR;
+  if (is_t0) {
+    nA = TensorView<T, NDIM>(nodeA, K);
+    nB = TensorView<T, NDIM>(nodeB, K);
+    nR = TensorView<T, NDIM>(nodeR, K);
+  }
+  SYNCTHREADS();
+
+  const Level n = key.level();
+  const T fac = std::pow(T(2), T(n/2));
+  const T *_x, *w;
+  GLget(gldata, &_x, &w, K);
+
+  foreach_idx(nA, [&](auto... idx) {
+    T sum = T(0);
+    for (std::size_t i = 0; i < K; ++i) {
+      sum += nA(idx...) * nB(idx...) / std::sqrt(w[i]);
+    }
+    nR(idx...) = sum*fac;
+  });
+}
 
 template<typename Fn, typename T, Dimension NDIM>
 DEVSCOPE void fcoeffs_kernel_impl(
