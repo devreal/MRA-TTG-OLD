@@ -21,7 +21,7 @@ namespace mra::detail {
 #else // __CUDA_ARCH__
 #define SCOPE
 #define VARSCOPE
-#define SYNCTHREADS()
+#define SYNCTHREADS() do {} while(0)
 #define DEVSCOPE
 #define SHARED
 #endif // __CUDA_ARCH__
@@ -44,7 +44,7 @@ using Dim3 = mra::detail::dim3;
   name<<<block, thread, shared, stream>>> args
 
 #else  // __CUDACC__
-#define checkSubmit()
+#define checkSubmit() do {} while(0)
 #define CALL_KERNEL(name, blocks, thread, shared, stream, args) do { \
     blockIdx = {0, 0, 0};                       \
     for (std::size_t i = 0; i < blocks; ++i) {  \

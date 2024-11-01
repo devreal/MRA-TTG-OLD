@@ -219,7 +219,7 @@ static auto make_compress(
       auto d_sumsq_scratch = ttg::make_scratch(&d_sumsq, ttg::scope::Allocate, 1);
 #ifndef TTG_ENABLE_HOST
       co_await ttg::device::select(p.coeffs.buffer(), d.buffer(), hgT.buffer(),
-                                   tmp_scratch, sumsqs_scratch,
+                                   tmp_scratch, d_sumsq_scratch,
                                    in0.coeffs.buffer(), in1.coeffs.buffer(),
                                    in2.coeffs.buffer(), in3.coeffs.buffer(),
                                    in4.coeffs.buffer(), in5.coeffs.buffer(),

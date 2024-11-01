@@ -500,7 +500,7 @@ template <typename keyT, typename valueT>
 auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const bool doprint=true) {
   auto func = [str,doprint](const keyT& key, const valueT& value) {
     // sanity check
-    assert(value.coeffs().buffer().get_owner_device().is_host());
+    assert(value.coeffs().buffer().is_current_on(ttg::device::Device()));
     if (doprint) {
       std::lock_guard<std::mutex> obolus(printer_guard);
       std::cout << str << " (" << key << "," << value << ")" << std::endl;
@@ -525,7 +525,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
 #ifndef TTG_ENABLE_HOST
-      co_await ttg::device::forward(ttg::device::send<0>(key, std::forward<S>(out)));
+      sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
 #else
       ttg::send<0>(key, std::forward<S>(out));
 #endif
@@ -587,7 +587,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
     }
 
 #ifndef TTG_ENABLE_HOST
-    co_await sends;
+    co_await std::move(sends);
 #endif // TTG_ENABLE_HOST
   };
 
