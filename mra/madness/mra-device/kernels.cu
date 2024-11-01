@@ -274,8 +274,7 @@ void submit_gaxpy_kernel<double, 3>(
 
 template <typename T, Dimension NDIM>
 DEVSCOPE void mul_kernel_impl(
-  const T* nodeA, const T* nodeB, T* nodeR,
-  const T* gldata, std::size_t K, Key<NDIM> key)
+  const T* nodeA, const T* nodeB, T* nodeR, std::size_t K)
 {
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
   SHARED TensorView<T, NDIM> nA, nB, nR;
@@ -286,17 +285,8 @@ DEVSCOPE void mul_kernel_impl(
   }
   SYNCTHREADS();
 
-  const Level n = key.level();
-  const T fac = std::pow(T(2), T(n/2));
-  const T *_x, *w;
-  GLget(gldata, &_x, &w, K);
-
   foreach_idx(nA, [&](auto... idx) {
-    T sum = T(0);
-    for (std::size_t i = 0; i < K; ++i) {
-      sum += nA(idx...) * nB(idx...) / std::sqrt(w[i]);
-    }
-    nR(idx...) = sum*fac;
+      nR(idx...) = nA(idx...) * nB(idx...);
   });
 }
 
