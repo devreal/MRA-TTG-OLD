@@ -298,7 +298,7 @@ DEVSCOPE void multiply_kernel_impl(
 
   // convert coeffs to function values
   transform(nA, phiT, r1, workspace);
-  transform(nA, phiT, r2, workspace);
+  transform(nB, phiT, r2, workspace);
   const T scale = std::pow(T(2), T(0.5 * NDIM * key.level())) / std::sqrt(D.template get_volume<T>());
 
   foreach_idx(nA, [&](auto... idx) {
