@@ -273,21 +273,35 @@ void submit_gaxpy_kernel<double, 3>(
   cudaStream_t stream);
 
 template <typename T, Dimension NDIM>
-DEVSCOPE void mul_kernel_impl(
-  const T* nodeA, const T* nodeB, T* nodeR, std::size_t K)
+DEVSCOPE void multiply_kernel_impl(
+  const Domain<NDIM>& D, const T* nodeA, const T* nodeB, T* nodeR,
+  T* tmp, const T* phiT_ptr, const T* phibar_ptr, Key<NDIM> key, std::size_t K)
 {
   const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-  SHARED TensorView<T, NDIM> nA, nB, nR;
+  const std::size_t K2NDIM = std::pow(K, NDIM);
+  SHARED TensorView<T, NDIM> nA, nB, nR, workspace, r1, r2, r, phiT, phibar;
   if (is_t0) {
-    nA = TensorView<T, NDIM>(nodeA, K);
-    nB = TensorView<T, NDIM>(nodeB, K);
-    nR = TensorView<T, NDIM>(nodeR, K);
+    nA        = TensorView<T, NDIM>(nodeA, K);
+    nB        = TensorView<T, NDIM>(nodeB, K);
+    nR        = TensorView<T, NDIM>(nodeR, K);
+    workspace = TensorView<T, NDIM>(&tmp[0], K);
+    r         = TensorView<T, NDIM>(&tmp[K2NDIM+0*K2NDIM], K);
+    r1        = TensorView<T, NDIM>(&tmp[K2NDIM+1*K2NDIM], K);
+    r2        = TensorView<T, NDIM>(&tmp[K2NDIM+2*K2NDIM], K);
+    phiT      = TensorView<T, 2>(phiT_ptr, K, K);
+    phibar    = TensorView<T, 2>(phibar_ptr, K, K);
   }
   SYNCTHREADS();
 
+  transform(nA, phiT, r1, workspace);
+  transform(nA, phiT, r2, workspace);
+  const T scale = std::pow(T(2), T(0.5 * NDIM * key.level())) / std::sqrt(D.template get_volume<T>());
+
   foreach_idx(nA, [&](auto... idx) {
-      nR(idx...) = nA(idx...) * nB(idx...);
+      r(idx...) = scale * r1(idx...) * r2(idx...);
   });
+
+  transform(r, phibar, nR, workspace);
 }
 
 template<typename Fn, typename T, Dimension NDIM>
