@@ -100,6 +100,7 @@ namespace mra {
         FunctionData(std::size_t K)
         : K(K)
         , phi(K, K)
+        , phiT(K, K)
         , phibar(K, K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
@@ -108,6 +109,7 @@ namespace mra {
         , rp(K, K)
         {
             make_phi();
+            make_phiT();
             make_phibar();
             twoscale_get(K, HG.data());
             auto HG_view  = HG.current_view();
@@ -126,6 +128,7 @@ namespace mra {
         FunctionData& operator=(const FunctionData&) = delete;
 
         const auto& get_phi() const {return phi;}
+        const auto& get_phiT() const {return phiT;}
         const auto& get_phibar() const {return phibar;}
         const auto& get_hg() const {return HG;}
         const auto& get_hgT() const {return HGT;}
