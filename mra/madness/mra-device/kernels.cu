@@ -319,8 +319,9 @@ GLOBALSCOPE void multiply_kernel(
   int blockid = blockIdx.x;
 
     multiply_kernel_impl<T, NDIM>(D, nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
-                               nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
-                               &nodeR[K2NDIM*blockid], tmp, phiT_ptr, phibar_ptr, key, K);
+                                  nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
+                                  &nodeR[K2NDIM*blockid], &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
+                                  phiT_ptr, phibar_ptr, key, K);
 }
 
 template <typename T, Dimension NDIM>
@@ -340,7 +341,7 @@ void submit_multiply_kernel(
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(multiply_kernel, N, thread_dims, 0, stream,
-      (D, funcA.data(), funcB.data(), funcR.data(), &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
+      (D, funcA.data(), funcB.data(), funcR.data(), tmp,
       phiT.data(), phibar.data(), key, K));
     checkSubmit();
 }
