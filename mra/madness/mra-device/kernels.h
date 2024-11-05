@@ -149,4 +149,18 @@ void submit_gaxpy_kernel(
   std::size_t K,
   ttg::device::Stream stream);
 
+template <typename T, mra::Dimension NDIM>
+void submit_multiply_kernel(
+  const mra::Domain<NDIM>& D,
+  const mra::TensorView<T, NDIM+1>& funcA,
+  const mra::TensorView<T, NDIM+1>& funcB,
+  mra::TensorView<T, NDIM+1>& funcR,
+  const mra::TensorView<T, 2>& phiT,
+  const mra::TensorView<T, 2>& phibar,
+  std::size_t N,
+  std::size_t K,
+  const mra::Key<NDIM>& key,
+  T* tmp,
+  ttg::device::Stream stream);
+
 #endif // HAVE_KERNELS_H
