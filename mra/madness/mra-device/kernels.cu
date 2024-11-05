@@ -340,7 +340,8 @@ void submit_multiply_kernel(
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(multiply_kernel, N, thread_dims, 0, stream,
-      (D, funcA.data(), funcB.data(), funcR.data(), tmp, phiT.data(), phibar.data(), key, K));
+      (D, funcA.data(), funcB.data(), funcR.data(), &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
+      phiT.data(), phibar.data(), key, K));
     checkSubmit();
 }
 

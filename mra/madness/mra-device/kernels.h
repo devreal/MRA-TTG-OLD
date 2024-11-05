@@ -149,6 +149,12 @@ void submit_gaxpy_kernel(
   std::size_t K,
   ttg::device::Stream stream);
 
+template<mra::Dimension NDIM>
+SCOPE std::size_t multiply_tmp_size(std::size_t K) {
+  const size_t K2NDIM = std::pow(K,NDIM);
+  return 4*K2NDIM; // workspace, r, r1, and r2
+}
+
 template <typename T, mra::Dimension NDIM>
 void submit_multiply_kernel(
   const mra::Domain<NDIM>& D,
