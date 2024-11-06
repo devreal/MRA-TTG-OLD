@@ -593,7 +593,83 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
   return ttg::make_tt<Space>(std::move(func),
                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
-                             ttg::edges(out, S1, S2), "add",
+                             ttg::edges(out, S1, S2), "gaxpy",
+                             {"in1", "in2"},
+                             {"out", "S1", "S2"});
+}
+
+
+
+template<typename T, mra::Dimension NDIM>
+auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
+              const mra::FunctionData<T, NDIM>& functiondata,
+              const ttg::Buffer<mra::Domain<NDIM>>& db, const size_t N, const size_t K)
+{
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
+
+  auto func = [&, N, K](
+            const mra::Key<NDIM>& key,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t1,
+            const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
+
+    auto sends = ttg::device::forward();
+    auto send_out = [&]<typename S>(S&& out){
+#ifndef TTG_ENABLE_HOST
+      sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
+#else
+      ttg::send<0>(key, std::forward<S>(out));
+#endif
+    };
+
+    if (t1.empty() || t2.empty()) {
+      /* send out an empty result */
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      send_out(std::move(out));
+    } else {
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+      const auto& phibar = functiondata.get_phibar();
+      const auto& phiT = functiondata.get_phiT();
+      const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
+      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+
+  #ifndef TTG_ENABLE_HOST
+      auto input = ttg::device::Input(out.coeffs().buffer(), phibar.buffer(), phiT.buffer(),
+                                      tmp_scratch);
+      // if (!t1.empty()) {
+      //   input.add(t1.coeffs().buffer());
+      // }
+      // if (!t2.empty()) {
+      //   input.add(t2.coeffs().buffer());
+      // }
+      // pass in phibar, phiT, gl, and tmp_scratch to select
+      co_await ttg::device::select(input);
+  #endif
+      auto t1_view = t1.coeffs().current_view();
+      auto t2_view = t2.coeffs().current_view();
+      auto out_view = out.coeffs().current_view();
+
+      auto phiT_view = phiT.current_view();
+      auto phibar_view = phibar.current_view();
+      auto& D = *db.current_device_ptr();
+      T* tmp_device = tmp_scratch.device_ptr();
+
+      submit_multiply_kernel(D, t1_view, t2_view, out_view, phiT_view, phibar_view,
+                          N, K, key, tmp_device, ttg::device::current_stream());
+
+      send_out(std::move(out));
+    }
+
+#ifndef TTG_ENABLE_HOST
+    co_await std::move(sends);
+#endif // TTG_ENABLE_HOST
+  };
+
+  return ttg::make_tt<Space>(std::move(func),
+                             ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
+                             ttg::edges(out, S1, S2), "multiply",
                              {"in1", "in2"},
                              {"out", "S1", "S2"});
 }
@@ -612,7 +688,7 @@ void test(std::size_t N, std::size_t K) {
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, add_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, gaxpy_result, multiply_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result;
 
   // define N Gaussians
@@ -639,11 +715,13 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto add = make_gaxpy(reconstruct_result, reconstruct_result, add_result, T(1.0), T(1.0), idxs, N, K);
+  auto gaxpy = make_gaxpy(reconstruct_result, reconstruct_result, gaxpy_result, T(1.0), T(1.0), idxs, N, K);
+  auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
-  auto printer4 = make_printer(add_result, "added", false);
+  auto printer4 = make_printer(gaxpy_result, "gaxpy", false);
+  auto printer5 = make_printer(multiply_result, "multiply", false);
 
   auto connected = make_graph_executable(start.get());
   assert(connected);

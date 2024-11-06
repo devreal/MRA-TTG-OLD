@@ -14,6 +14,7 @@ namespace mra {
     class FunctionData {
         std::size_t K;
         Tensor<T,2> phi; // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
+        Tensor<T,2> phiT; // transpose of phi
         Tensor<T,2> phibar; // phibar(mu,i) = w[mu]*phi(x[mu],i)
         Tensor<T,2> HG; // Two scale filter applied from left to scaling function coeffs
         Tensor<T,2> HGT; // Two scale filter applied from right to scaling function coeffs
@@ -58,6 +59,22 @@ namespace mra {
             delete[] p;
         }
 
+        /// Set phiT(mu,i) to be phiT(x[mu],i)
+        void make_phiT() {
+            /* retrieve x, w from constant memory */
+            const T *x, *w;
+            GLget(&x, &w, K);
+            T* p = new T[K];
+            auto phiT_view = phi.current_view();
+            for (std::size_t mu = 0; mu < K; ++mu) {
+                legendre_scaling_functions(x[mu], K, &p[0]);
+                for (std::size_t i = 0; i < K; ++i) {
+                    phiT_view(i, mu) = p[i];
+                }
+            }
+            delete[] p;
+        }
+
         /// Set phibar(mu,i) to be w[mu]*phi(x[mu],i)
         void make_phibar() {
             /* retrieve x, w from constant memory */
@@ -83,6 +100,7 @@ namespace mra {
         FunctionData(std::size_t K)
         : K(K)
         , phi(K, K)
+        , phiT(K, K)
         , phibar(K, K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
@@ -91,6 +109,7 @@ namespace mra {
         , rp(K, K)
         {
             make_phi();
+            make_phiT();
             make_phibar();
             twoscale_get(K, HG.data());
             auto HG_view  = HG.current_view();
@@ -109,6 +128,7 @@ namespace mra {
         FunctionData& operator=(const FunctionData&) = delete;
 
         const auto& get_phi() const {return phi;}
+        const auto& get_phiT() const {return phiT;}
         const auto& get_phibar() const {return phibar;}
         const auto& get_hg() const {return HG;}
         const auto& get_hgT() const {return HGT;}
