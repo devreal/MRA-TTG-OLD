@@ -288,9 +288,9 @@ DEVSCOPE void multiply_kernel_impl(
     nB        = TensorView<T, NDIM>(nodeB, K);
     nR        = TensorView<T, NDIM>(nodeR, K);
     workspace = TensorView<T, NDIM>(&tmp[0], K);
-    r         = TensorView<T, NDIM>(&tmp[K2NDIM+0*K2NDIM], K);
-    r1        = TensorView<T, NDIM>(&tmp[K2NDIM+1*K2NDIM], K);
-    r2        = TensorView<T, NDIM>(&tmp[K2NDIM+2*K2NDIM], K);
+    r         = TensorView<T, NDIM>(&tmp[1*K2NDIM], K);
+    r1        = TensorView<T, NDIM>(&tmp[2*K2NDIM], K);
+    r2        = TensorView<T, NDIM>(&tmp[3*K2NDIM], K);
     phiT      = TensorView<T, 2>(phiT_ptr, K, K);
     phibar    = TensorView<T, 2>(phibar_ptr, K, K);
   }
