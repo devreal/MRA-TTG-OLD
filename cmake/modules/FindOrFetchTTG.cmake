@@ -10,7 +10,7 @@ else (TARGET ttg)
   FetchContent_Declare(
       ttg
       GIT_REPOSITORY      https://github.com/devreal/ttg.git
-      GIT_TAG             37c2a5fed448970f8d33fd0ded89185d3134a282
+      GIT_TAG             56aca3ab4870b431c565c3f07592393e9c0fe0dc
   )
 
 #FetchContent_Declare(
