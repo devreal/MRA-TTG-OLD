@@ -4,7 +4,7 @@
 #include <cassert>
 #include <cmath>
 #include "gl.h"
-#include "../madness-1d/mrarange.h"
+#include "mrarange.h"
 #include <ttg/device/device.h>
 
 namespace mra {
