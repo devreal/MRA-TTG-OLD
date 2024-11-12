@@ -3,8 +3,8 @@
 #include <array>
 #include <cassert>
 #include <cmath>
-#include "../include/gl.h"
-#include "../../madness-1d/mrarange.h"
+#include "gl.h"
+#include "mrarange.h"
 #include <ttg/device/device.h>
 
 namespace mra {
