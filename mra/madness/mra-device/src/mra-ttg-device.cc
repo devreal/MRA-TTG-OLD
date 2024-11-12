@@ -1,13 +1,13 @@
 #include <ttg.h>
-#include "tensor.h"
-#include "tensorview.h"
-#include "functionnode.h"
-#include "functiondata.h"
-#include "kernels.h"
-#include "gaussian.h"
-#include "functionfunctor.h"
-#include "key.h"
-#include "domain.h"
+#include "../include/tensor.h"
+#include "../include/tensorview.h"
+#include "../include/functionnode.h"
+#include "../include/functiondata.h"
+#include "../include/kernels.h"
+#include "../include/gaussian.h"
+#include "../include/functionfunctor.h"
+#include "../include/key.h"
+#include "../include/domain.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>

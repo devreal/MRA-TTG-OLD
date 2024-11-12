@@ -1,5 +1,5 @@
 #include "ttg.h"
-#include "util.h"
+#include "../include/util.h"
 
 /* reuse dim3 from CUDA/HIP if available*/
 #if !defined(TTG_HAVE_CUDA) && !defined(TTG_HAVE_HIP)

@@ -3,7 +3,7 @@
 
 #include "types.h"
 #include "domain.h"
-#include "../mratwoscale.h"
+#include "../../mratwoscale.h"
 #include "tensor.h"
 #include "gl.h"
 
