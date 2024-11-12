@@ -2,7 +2,7 @@
 #define MADHASH_H_INCL
 
 #include "types.h"
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 

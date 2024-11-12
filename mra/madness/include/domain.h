@@ -9,7 +9,7 @@
 
 #include "types.h"
 #include "key.h"
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 

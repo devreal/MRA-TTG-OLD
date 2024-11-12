@@ -12,6 +12,8 @@
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
 
+using namespace mra; // we're lazy
+
 #ifdef MRA_ENABLE_HOST
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
@@ -97,7 +99,7 @@ auto make_project(
         /* TODO: have make_scratch allocate pinned memory for us */
         auto is_leafs = std::make_unique_for_overwrite<bool[]>(N);
         auto is_leafs_scratch = ttg::make_scratch(is_leafs.get(), ttg::scope::Allocate, N);
-        const std::size_t tmp_size = project_tmp_size<NDIM>(K)*N;
+        const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
@@ -513,11 +515,11 @@ template<typename T, mra::Dimension NDIM>
 auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-              const T scalarA, const T scalarB, const int* idxs, const size_t N, const size_t K)
+              const T scalarA, const T scalarB, const size_t N, const size_t K)
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
 
-  auto func = [N, K, scalarA, scalarB, idxBuf = ttg::Buffer<const int>(idxs, N)](
+  auto func = [N, K, scalarA, scalarB](
             const mra::Key<NDIM>& key,
             const mra::FunctionsReconstructedNode<T, NDIM>& t1,
             const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
@@ -540,7 +542,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
       auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
 
   #ifndef MRA_ENABLE_HOST
-      auto input = ttg::device::Input(out.coeffs().buffer(), idxBuf);
+      auto input = ttg::device::Input(out.coeffs().buffer());
       if (!t1.empty()) {
         input.add(t1.coeffs().buffer());
       }
@@ -553,7 +555,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
       auto t2_view = t2.coeffs().current_view();
       auto out_view = out.coeffs().current_view();
 
-      submit_gaxpy_kernel(key, t1_view, t2_view, out_view, idxBuf.current_device_ptr(),
+      submit_gaxpy_kernel(key, t1_view, t2_view, out_view,
                           scalarA, scalarB, N, K, ttg::device::current_stream());
 
       send_out(std::move(out));
@@ -705,9 +707,6 @@ void test(std::size_t N, std::size_t K) {
     gaussians.emplace_back(D, expnt, r);
   }
 
-  int *idxs = new int[N];
-  for (int i = 0; i < N; ++i) idxs[i] = i;
-
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
@@ -715,7 +714,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto gaxpy = make_gaxpy(reconstruct_result, reconstruct_result, gaxpy_result, T(1.0), T(1.0), idxs, N, K);
+  auto gaxpy = make_gaxpy(reconstruct_result, reconstruct_result, gaxpy_result, T(1.0), T(1.0), N, K);
   auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
@@ -739,8 +738,6 @@ void test(std::size_t N, std::size_t K) {
   }
   ttg::execute();
   ttg::fence();
-
-  delete[] idxs;
 
   if (ttg::default_execution_context().rank() == 0) {
     end = std::chrono::high_resolution_clock::now();

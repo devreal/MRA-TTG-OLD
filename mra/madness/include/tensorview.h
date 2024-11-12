@@ -6,7 +6,7 @@
 #include <array>
 
 #include "types.h"
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 

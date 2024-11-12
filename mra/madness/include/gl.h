@@ -4,15 +4,12 @@
 #include <cstddef>
 #include <cassert>
 
-#ifndef __CUDA_ARCH__
-#include "ttg/buffer.h"
-#endif // __CUDA_ARCH__
+#include "platform.h"
 
-#include "util.h"
+#include "ttg/buffer.h"
 
 namespace mra {
 
-#ifndef __CUDA_ARCH__
   namespace detail {
     /// Arrays for points and weights for the Gauss-Legendre quadrature on [0,1].
     /// only available directly on the host
@@ -42,7 +39,6 @@ namespace mra {
   void legendre_scaling_functions(float x, size_t k, float *p);
 
   bool GLinitialize();
-#endif // __CUDA_ARCH__
 
   template<typename T>
   SCOPE void GLget(const T* glptr, const T** x, const T **w, std::size_t N) {

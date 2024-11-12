@@ -6,7 +6,7 @@
 #include <vector>
 #include <array>
 
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 

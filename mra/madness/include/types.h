@@ -6,7 +6,7 @@
 #include <cstdint>
 #include <cassert>
 
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 
