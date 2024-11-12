@@ -1,15 +1,15 @@
 #include <type_traits>
 #include <cstddef>
-#include "../include/tensorview.h"
-#include "../include/gaussian.h"
-#include "../include/key.h"
-#include "../include/domain.h"
-#include "../include/gl.h"
-#include "../include/kernels.h"
-#include "../include/functions.h"
-#include "../include/util.h"
-#include "../include/functionfunctor.h"
-#include "../include/helper.h"
+#include "tensorview.h"
+#include "gaussian.h"
+#include "key.h"
+#include "domain.h"
+#include "gl.h"
+#include "kernels.h"
+#include "functions.h"
+#include "util.h"
+#include "functionfunctor.h"
+#include "helper.h"
 
 template<typename T>
 struct type_printer;
