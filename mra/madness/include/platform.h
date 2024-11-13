@@ -1,5 +1,14 @@
-#ifndef MRA_DEVICE_UTIL_H
-#define MRA_DEVICE_UTIL_H
+#ifndef MRA_DEVICE_PLATFORM_H
+#define MRA_DEVICE_PLATFORM_H
+
+#include <cstdlib>
+
+
+/**
+ * Utilities to achieve platform independence.
+ * Provides wrappers for CUDA/HIP constructs to compile code
+ * for both host and devices.
+ */
 
 namespace mra::detail {
   struct dim3
@@ -14,15 +23,13 @@ namespace mra::detail {
 /* convenience macro to mark functions __device__ if compiling for CUDA */
 #if defined(__CUDA_ARCH__)
 #define SCOPE __device__ __host__
-#define VARSCOPE __device__
 #define SYNCTHREADS() __syncthreads()
 #define DEVSCOPE __device__
 #define SHARED __shared__
 #else // __CUDA_ARCH__
 #define SCOPE
-#define VARSCOPE
 #define SYNCTHREADS() do {} while(0)
-#define DEVSCOPE
+#define DEVSCOPE inline
 #define SHARED
 #endif // __CUDA_ARCH__
 
@@ -45,13 +52,8 @@ using Dim3 = mra::detail::dim3;
 
 #else  // __CUDACC__
 #define checkSubmit() do {} while(0)
-#define CALL_KERNEL(name, blocks, thread, shared, stream, args) do { \
-    blockIdx = {0, 0, 0};                       \
-    for (std::size_t i = 0; i < blocks; ++i) {  \
-      blockIdx.x = i;                           \
-      name args;                                \
-    }                                           \
-  } while (0)
+#define CALL_KERNEL(name, blocks, thread, shared, stream, args) \
+  name args
 #endif // __CUDACC__
 
 #if defined(__CUDA_ARCH__)
@@ -60,4 +62,31 @@ using Dim3 = mra::detail::dim3;
 #define THROW(s) do { throw std::runtime_error(s); } while(0)
 #endif // __CUDA_ARCH__
 
-#endif // MRA_DEVICE_UTIL_H
+
+#if defined(MRA_ENABLE_HOST)
+
+#include "ttg.h" // for ttg::device::Stream
+
+/**
+ * Block and thread variables for host execution.
+ */
+
+/* reuse dim3 from CUDA/HIP if available*/
+#if !defined(TTG_HAVE_CUDA) && !defined(TTG_HAVE_HIP)
+struct dim3 {
+    int x, y, z;
+};
+#endif
+
+/* define our own thread layout (single thread) */
+static constexpr const dim3 threadIdx = {0, 0, 0};
+static constexpr const dim3 blockDim  = {1, 1, 1};
+static constexpr const dim3 gridDim   = {1, 1, 1};
+static constexpr const dim3 blockIdx  = {0, 0, 0};
+
+/* point cudaStream_t to our own stream type */
+typedef ttg::device::Stream cudaStream_t;
+
+#endif // MRA_ENABLE_HOST
+
+#endif // MRA_DEVICE_PLATFORM_H

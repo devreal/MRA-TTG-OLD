@@ -4,7 +4,7 @@
 #include "types.h"
 #include "hash.h"
 #include "misc.h"
-#include "util.h"
+#include "platform.h"
 
 namespace mra {
 

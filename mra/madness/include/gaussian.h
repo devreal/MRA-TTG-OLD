@@ -3,7 +3,7 @@
 
 #include "types.h"
 #include "domain.h"
-#include "util.h"
+#include "platform.h"
 #include "functions.h"
 
 /**

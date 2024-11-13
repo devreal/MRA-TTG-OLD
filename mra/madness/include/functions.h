@@ -1,7 +1,7 @@
 #ifndef HAVE_MRA_DEVICE_FUNCTIONS_H
 #define HAVE_MRA_DEVICE_FUNCTIONS_H
 
-#include "util.h"
+#include "platform.h"
 #include "types.h"
 #include "key.h"
 #include "tensorview.h"
