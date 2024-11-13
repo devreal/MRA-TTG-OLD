@@ -1,7 +1,7 @@
 # ref: https://github.com/TESSEorg/ttg/blob/master/.github/workflows/cmake.yml
 name: Linux/MacOS Build
 
-on: [push, pull_request]
+on: [pull_request]
 
 #env:
 

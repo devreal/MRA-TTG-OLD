@@ -12,11 +12,18 @@ include(CheckLanguage)
 check_language(CUDA)
 if(CMAKE_CUDA_COMPILER)
   enable_language(CUDA)
+  set(TTG_ENABLE_CUDA ON)
 endif(CMAKE_CUDA_COMPILER)
 set(HAVE_CUDA ${CMAKE_CUDA_COMPILER} CACHE BOOL "True if we can compile .cu files")
 
-include(FindOrFetchTTG)
+# don't bother with Boost
+set(TTG_FETCH_BOOST OFF)
+set(TTG_PARSEC_USE_BOOST_SERIALIZATION OFF)
+set(TTG_EXAMPLES OFF)
 
-find_package(OpenMP)
+# disable tests, may want to re-enable later
+set(BUILD_TESTING OFF)
+
+include(FindOrFetchTTG)
 
 add_subdirectory(mra)

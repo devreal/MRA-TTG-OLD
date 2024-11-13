@@ -12,7 +12,7 @@
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
 
-#ifdef TTG_ENABLE_HOST
+#ifdef MRA_ENABLE_HOST
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
 #else
@@ -61,7 +61,7 @@ auto make_project(
                 We need to fix broadcast to support any ranges */
       for (auto child : children(key)) bcast_keys.push_back(child);
 
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
       ttg::broadcastk<0>(std::move(bcast_keys));
@@ -105,7 +105,7 @@ auto make_project(
         coeffs.buffer().reset_scope(ttg::scope::Allocate);
 
         /* TODO: cannot do this from a function, had to move it into the main task */
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
         co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
                                     hgT.buffer(), tmp_scratch, is_leafs_scratch);
   #endif
@@ -124,7 +124,7 @@ auto make_project(
                               is_leafs_device, thresh, ttg::device::current_stream());
 
         /* wait and get is_leaf back */
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(is_leafs_scratch);
   #endif
         for (std::size_t i = 0; i < N; ++i) {
@@ -139,7 +139,7 @@ auto make_project(
       if (!result.is_all_leaf()) {
         std::vector<mra::Key<NDIM>> bcast_keys;
         for (auto child : children(key)) bcast_keys.push_back(child);
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
         ttg::broadcastk<0>(bcast_keys);
@@ -147,7 +147,7 @@ auto make_project(
       }
 
     }
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     outputs.push_back(ttg::device::send<1>(key, std::move(result))); // always produce a result
     co_await std::move(outputs);
 #else
@@ -164,7 +164,7 @@ static auto select_compress_send(const mra::Key<NDIM>& key, Value&& value,
                                  std::size_t child_idx,
                                  std::index_sequence<I, Is...>) {
   if (child_idx == I) {
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     return ttg::device::send<I>(key.parent(), std::forward<Value>(value));
 #else
     return ttg::send<I>(key.parent(), std::forward<Value>(value));
@@ -183,7 +183,7 @@ template<typename T, mra::Dimension NDIM>
 static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::FunctionsReconstructedNode<T, NDIM>& node) {
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.any_have_children()) {
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
     select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
@@ -271,7 +271,7 @@ static auto make_compress(
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
         auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
         auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
                                         tmp_scratch, d_sumsq_scratch);
         auto select_in = [&](const auto& in) {
@@ -310,7 +310,7 @@ static auto make_compress(
                               ttg::device::current_stream());
 
         /* wait for kernel and transfer sums back */
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(d_sumsq_scratch);
   #endif
 
@@ -328,7 +328,7 @@ static auto make_compress(
       // Recur up
       if (key.level() > 0) {
         // will not return
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::forward(
           // select to which child of our parent we send
           //ttg::device::send<0>(key, std::move(p)),
@@ -343,7 +343,7 @@ static auto make_compress(
         for (std::size_t i = 0; i < N; ++i) {
           std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) << std::endl;
         }
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::forward(
           // Send result to output tree
           ttg::device::send<out_terminal_id>(key, std::move(result)));
@@ -381,7 +381,7 @@ auto make_reconstruct(
     // Send empty interior node to result tree
     auto r_empty = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
     r_empty.set_all_leaf(false);
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     // forward() returns a vector that we can push into
     auto sends = ttg::device::forward(ttg::device::send<1>(key, std::move(r_empty)));
     auto do_send = [&]<std::size_t I, typename S>(auto& child, S&& node) {
@@ -392,7 +392,7 @@ auto make_reconstruct(
     auto do_send = []<std::size_t I, typename S>(auto& child, S&& node) {
       ttg::send<I>(child, std::forward<S>(node));
     };
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
 
     // array of child nodes
     std::array<mra::FunctionsReconstructedNode<T,NDIM>, mra::Key<NDIM>::num_children()> r_arr;
@@ -417,13 +417,13 @@ auto make_reconstruct(
           do_send.template operator()<0>(child, std::move(r));
         }
       }
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       // won't return
       co_await std::move(sends);
       assert(0);
-#else  // TTG_ENABLE_HOST
+#else  // MRA_ENABLE_HOST
       return; // we're done
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
     } else if (node.empty()) {
       /* parent node not empty so allocate a new compressed node */
       //std::cout << "reconstruct " << key << " allocating previously empoty node " << std::endl;
@@ -443,7 +443,7 @@ auto make_reconstruct(
       r_arr[i].coeffs().buffer().reset_scope(ttg::scope::Allocate);
     }
 
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     // helper lambda to pick apart the std::array
     auto make_inputs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
       return ttg::device::Input(hg.buffer(), node.coeffs().buffer(), tmp_scratch,
@@ -478,9 +478,9 @@ auto make_reconstruct(
         do_send.template operator()<0>(child, std::move(r));
       }
     }
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await std::move(sends);
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
   };
 
 
@@ -524,7 +524,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
 #else
       ttg::send<0>(key, std::forward<S>(out));
@@ -539,7 +539,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
       auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
 
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer(), idxBuf);
       if (!t1.empty()) {
         input.add(t1.coeffs().buffer());
@@ -570,12 +570,12 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
       auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
       // mark all functions as leafs
       t.set_all_leaf(true);
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::broadcast<I>(
                         std::move(child_keys), std::move(t)));
 #else
       ttg::broadcast<I>(std::move(child_keys), std::move(t));
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
     };
 
     if (t1.is_all_leaf() && !t2.is_all_leaf()) {
@@ -586,9 +586,9 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
       balance_trees.template operator()<2>();
     }
 
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await std::move(sends);
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
   };
 
   return ttg::make_tt<Space>(std::move(func),
@@ -616,7 +616,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
 #else
       ttg::send<0>(key, std::forward<S>(out));
@@ -635,7 +635,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
-  #ifndef TTG_ENABLE_HOST
+  #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer(), phibar.buffer(), phiT.buffer(),
                                       tmp_scratch);
       // if (!t1.empty()) {
@@ -662,9 +662,9 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       send_out(std::move(out));
     }
 
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await std::move(sends);
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
   };
 
   return ttg::make_tt<Space>(std::move(func),

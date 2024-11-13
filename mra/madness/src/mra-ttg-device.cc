@@ -12,7 +12,7 @@
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
 
-#ifdef TTG_ENABLE_HOST
+#ifdef MRA_ENABLE_HOST
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
 #else
@@ -54,7 +54,7 @@ auto make_project(
                 We need to fix broadcast to support any ranges */
       for (auto child : children(key)) bcast_keys.push_back(child);
 
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
       ttg::broadcastk<0>(std::move(bcast_keys));
@@ -88,7 +88,7 @@ auto make_project(
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
       /* TODO: cannot do this from a function, need to move it into the main task */
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
                                    hgT.buffer(), tmp_scratch, is_leaf_scratch);
 #endif
@@ -107,7 +107,7 @@ auto make_project(
                             is_leaf_device, thresh, ttg::device::current_stream());
 
       /* wait and get is_leaf back */
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       co_await ttg::device::wait(is_leaf_scratch);
 #endif
       result.is_leaf = is_leaf;
@@ -119,14 +119,14 @@ auto make_project(
       if (!result.is_leaf) {
         std::vector<mra::Key<NDIM>> bcast_keys;
         for (auto child : children(key)) bcast_keys.push_back(child);
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
         ttg::broadcastk<0>(bcast_keys);
 #endif
       }
     }
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     outputs.push_back(ttg::device::send<1>(key, std::move(result))); // always produce a result
     co_await std::move(outputs);
 #else
@@ -143,7 +143,7 @@ static auto select_compress_send(const mra::Key<NDIM>& key, Value&& value,
                                  std::size_t child_idx,
                                  std::index_sequence<I, Is...>) {
   if (child_idx == I) {
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     return ttg::device::send<I>(key.parent(), std::forward<Value>(value));
 #else
     return ttg::send<I>(key.parent(), std::forward<Value>(value));
@@ -162,7 +162,7 @@ template<typename T, mra::Dimension NDIM>
 static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::FunctionReconstructedNode<T, NDIM>& node) {
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.has_children()) {
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
     select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
@@ -217,7 +217,7 @@ static auto make_compress(
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
       T d_sumsq;
       auto d_sumsq_scratch = ttg::make_scratch(&d_sumsq, ttg::scope::Allocate, 1);
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       co_await ttg::device::select(p.coeffs.buffer(), d.buffer(), hgT.buffer(),
                                    tmp_scratch, d_sumsq_scratch,
                                    in0.coeffs.buffer(), in1.coeffs.buffer(),
@@ -242,7 +242,7 @@ static auto make_compress(
                             ttg::device::current_stream());
 
       /* wait for kernel and transfer sums back */
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
       co_await ttg::device::wait(d_sumsq_scratch);
 #endif
       T sumsq = 0.0;
@@ -260,7 +260,7 @@ static auto make_compress(
         p.sum = d_sumsq + sumsq; // result sumsq is last element in sumsqs
 
         // will not return
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::forward(
           // select to which child of our parent we send
           //ttg::device::send<0>(key, std::move(p)),
@@ -273,7 +273,7 @@ static auto make_compress(
 #endif
       } else {
         std::cout << "At root of compressed tree: total normsq is " << sumsq + d_sumsq << std::endl;
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::forward(
           // Send result to output tree
           ttg::device::send<out_terminal_id>(key, std::move(result)));
@@ -324,7 +324,7 @@ auto make_reconstruct(
                                  (r_arr[Is].coeffs.buffer())...);
     };
     /* select a device */
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     co_await do_select(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
 
@@ -340,7 +340,7 @@ auto make_reconstruct(
                               r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
 
     // forward() returns a vector that we can push into
-#ifndef TTG_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(ttg::device::send<1>(key, std::move(r_empty)));
     mra::KeyChildren<NDIM> children(key);
     for (auto it=children.begin(); it!=children.end(); ++it) {
@@ -371,7 +371,7 @@ auto make_reconstruct(
           ttg::send<0>(child, std::move(r.coeffs));
         }
     }
-#endif // TTG_ENABLE_HOST
+#endif // MRA_ENABLE_HOST
   };
 
 
