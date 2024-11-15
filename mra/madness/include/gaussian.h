@@ -33,8 +33,8 @@ namespace mra {
         {
             // Pick initial level such that average gap between quadrature points
             // will find a significant value
-            const int N = 6; // looking for where exp(-a*x^2) < 10**-N
-            const int K = 6; // typically the lowest order of the polyn
+            const size_type N = 6; // looking for where exp(-a*x^2) < 10**-N
+            const size_type K = 6; // typically the lowest order of the polyn
             const T log10 = std::log(10.0);
             const T log2 = std::log(2.0);
             const T L = domain.get_max_width();
@@ -57,17 +57,17 @@ namespace mra {
         /**
          * Evaluate function at N points x and store result in \c values
          */
-        SCOPE void operator()(const TensorView<T,2>& x, T* values, std::size_t N) const {
+        SCOPE void operator()(const TensorView<T,2>& x, T* values, size_type N) const {
             assert(x.dim(0) == NDIM);
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
 #ifdef __CUDA_ARCH__
-            int tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-            for (size_t i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+            size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
+            for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
                 values[i] = fac * std::exp(-expnt*values[i]);
             }
 #else  // __CUDA_ARCH__
-            for (std::size_t i = 0; i < N; ++i) {
+            for (size_type i = 0; i < N; ++i) {
                 values[i] = fac * std::exp(-expnt*values[i]);
             }
 #endif // __CUDA_ARCH__

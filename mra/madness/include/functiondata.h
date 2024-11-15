@@ -12,7 +12,7 @@ namespace mra {
     /// Convenient co-location of frequently used data
     template <typename T, Dimension NDIM>
     class FunctionData {
-        std::size_t K;
+        size_type K;
         Tensor<T,2> phi; // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
         Tensor<T,2> phiT; // transpose of phi
         Tensor<T,2> phibar; // phibar(mu,i) = w[mu]*phi(x[mu],i)
@@ -26,9 +26,9 @@ namespace mra {
             auto r0_view = r0.current_view();
             auto rm_view = rm.current_view();
             auto rp_view = rp.current_view();
-            for (std::size_t i = 0; i < K; ++i) {
+            for (size_type i = 0; i < K; ++i) {
                 double jphase = 1.0;
-                for (std::size_t j = 0; j < K; ++j) {
+                for (size_type j = 0; j < K; ++j) {
                     double gammaij = std::sqrt(double((2*i+1)*(2*j+1)));
                     double Kij;
                     if (((i-j)>0) && (((i-j)%2)==1))
@@ -50,9 +50,9 @@ namespace mra {
             GLget(&x, &w, K);
             T* p = new T[K];
             auto phi_view = phi.current_view();
-            for (std::size_t mu = 0; mu < K; ++mu) {
+            for (size_type mu = 0; mu < K; ++mu) {
                 legendre_scaling_functions(x[mu], K, &p[0]);
-                for (std::size_t i = 0; i < K; ++i) {
+                for (size_type i = 0; i < K; ++i) {
                     phi_view(mu,i) = p[i];
                 }
             }
@@ -66,9 +66,9 @@ namespace mra {
             GLget(&x, &w, K);
             T* p = new T[K];
             auto phiT_view = phi.current_view();
-            for (std::size_t mu = 0; mu < K; ++mu) {
+            for (size_type mu = 0; mu < K; ++mu) {
                 legendre_scaling_functions(x[mu], K, &p[0]);
-                for (std::size_t i = 0; i < K; ++i) {
+                for (size_type i = 0; i < K; ++i) {
                     phiT_view(i, mu) = p[i];
                 }
             }
@@ -82,9 +82,9 @@ namespace mra {
             GLget(&x, &w, K);
             T *p = new T[K];
             auto phibar_view = phibar.current_view();
-            for (std::size_t mu = 0; mu < K; ++mu) {
+            for (size_type mu = 0; mu < K; ++mu) {
                 legendre_scaling_functions(x[mu], K, &p[0]);
-                for (std::size_t i = 0; i < K; ++i) {
+                for (size_type i = 0; i < K; ++i) {
                     phibar_view(mu,i) = w[mu]*p[i];
                 }
             }
@@ -97,7 +97,7 @@ namespace mra {
 
     public:
 
-        FunctionData(std::size_t K)
+        FunctionData(size_type K)
         : K(K)
         , phi(K, K)
         , phiT(K, K)
@@ -114,8 +114,8 @@ namespace mra {
             twoscale_get(K, HG.data());
             auto HG_view  = HG.current_view();
             auto HGT_view = HGT.current_view();
-            for (std::size_t i = 0; i < 2*K; ++i) {
-                for (std::size_t j = 0; j < 2*K; ++j) {
+            for (size_type i = 0; i < 2*K; ++i) {
+                for (size_type j = 0; j < 2*K; ++j) {
                     HGT_view(j,i) = HG_view(i,j);
                 }
             }

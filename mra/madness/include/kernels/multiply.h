@@ -9,8 +9,8 @@
 namespace mra {
 
   template<mra::Dimension NDIM>
-  SCOPE std::size_t multiply_tmp_size(std::size_t K) {
-    const size_t K2NDIM = std::pow(K,NDIM);
+  SCOPE size_type multiply_tmp_size(size_type K) {
+    const size_type K2NDIM = std::pow(K,NDIM);
     return 4*K2NDIM; // workspace, r, r1, and r2
   }
 
@@ -26,10 +26,10 @@ namespace mra {
       const T* phiT_ptr,
       const T* phibar_ptr,
       Key<NDIM> key,
-      std::size_t K)
+      size_type K)
     {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-      const std::size_t K2NDIM = std::pow(K, NDIM);
+      const size_type K2NDIM = std::pow(K, NDIM);
 
       SHARED TensorView<T, NDIM> nA, nB, nR, workspace, r1, r2, r;
       SHARED TensorView<T, 2> phiT, phibar;
@@ -70,19 +70,17 @@ namespace mra {
       const T* phiT_ptr,
       const T* phibar_ptr,
       Key<NDIM> key,
-      std::size_t N,
-      std::size_t K)
+      size_type N,
+      size_type K)
     {
-      const size_t K2NDIM = std::pow(K, NDIM);
+      const size_type K2NDIM = std::pow(K, NDIM);
       /* adjust pointers for the function of each block */
-      int blockid = blockIdx.x;
+      size_type blockid = blockIdx.x;
 
-      for (std::size_t blockid = blockIdx.x; blockid < N; blockid += blockDim.x) {
-        multiply_kernel_impl<T, NDIM>(D, nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
-                                      nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
-                                      &nodeR[K2NDIM*blockid], &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
-                                      phiT_ptr, phibar_ptr, key, K);
-      }
+      multiply_kernel_impl<T, NDIM>(D, nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
+                                    nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
+                                    &nodeR[K2NDIM*blockid], &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
+                                    phiT_ptr, phibar_ptr, key, K);
     }
   } // namespace detail
 
@@ -94,8 +92,8 @@ namespace mra {
     TensorView<T, NDIM+1>& funcR,
     const TensorView<T, 2>& phiT,
     const TensorView<T, 2>& phibar,
-    std::size_t N,
-    std::size_t K,
+    size_type N,
+    size_type K,
     const Key<NDIM>& key,
     T* tmp,
     cudaStream_t stream)

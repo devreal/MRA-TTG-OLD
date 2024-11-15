@@ -19,7 +19,7 @@ namespace mra {
         std::array<bool, Key<NDIM>::num_children()> is_child_leaf = { false };
         tensor_type coeffs; //< if !is_leaf these are junk (and need not be communicated)
         FunctionReconstructedNode() = default; // Default initializer does nothing so that class is POD
-        FunctionReconstructedNode(const Key<NDIM>& key, std::size_t K)
+        FunctionReconstructedNode(const Key<NDIM>& key, size_type K)
         : key(key)
         , coeffs(K)
         {}
@@ -51,16 +51,16 @@ namespace mra {
         Tensor<T,NDIM> coeffs; //< Always significant
 
         FunctionCompressedNode() = default; // needed for serialization
-        FunctionCompressedNode(std::size_t K)
+        FunctionCompressedNode(size_type K)
         : coeffs(2*K)
         { }
-        FunctionCompressedNode(const Key<NDIM>& key, std::size_t K)
+        FunctionCompressedNode(const Key<NDIM>& key, size_type K)
         : key(key)
         , coeffs(2*K)
         { }
 
         //T normf() const {return coeffs.normf();}
-        bool has_children(size_t childindex) const {
+        bool has_children(int childindex) const {
             assert(childindex<Key<NDIM>::num_children());
             return !is_child_leaf[childindex];
         }
@@ -96,13 +96,13 @@ namespace mra {
      */
 
     namespace detail {
-      template<Dimension NDIM, std::size_t... Is>
-      std::array<std::size_t, NDIM> make_dims_helper(std::size_t N, std::size_t K, std::index_sequence<Is...>) {
-        return std::array<std::size_t, NDIM>{N, ((void)Is, K)...};
+      template<Dimension NDIM, size_type... Is>
+      std::array<size_type, NDIM> make_dims_helper(size_type N, size_type K, std::index_sequence<Is...>) {
+        return std::array<size_type, NDIM>{N, ((void)Is, K)...};
       }
       /* helper to create {N, K, K, K, ...} dims array */
       template<Dimension NDIM>
-      std::array<std::size_t, NDIM> make_dims(std::size_t N, std::size_t K) {
+      std::array<size_type, NDIM> make_dims(size_type N, size_type K) {
         return make_dims_helper<NDIM>(N, K, std::make_index_sequence<NDIM-1>{});
       }
     } // namespace detail
@@ -132,13 +132,13 @@ namespace mra {
         FunctionsReconstructedNode() = default;
 
         /* constructs a node with metadata for N functions and all coefficients zero */
-        FunctionsReconstructedNode(const Key<NDIM>& key, std::size_t N)
+        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N)
         : m_key(key)
         , m_metadata(N)
         , m_coeffs()
         { }
 
-        FunctionsReconstructedNode(const Key<NDIM>& key, std::size_t N, std::size_t K)
+        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K)
         : m_key(key)
         , m_metadata(N)
         , m_coeffs(detail::make_dims<NDIM+1>(N, K))
@@ -155,20 +155,20 @@ namespace mra {
          * Allocate space for coefficients using K.
          * The node must be empty before and will not be empty afterwards.
          */
-        void allocate(std::size_t K) {
+        void allocate(size_type K) {
           if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
-          std::size_t N = m_metadata.size();
+          size_type N = m_metadata.size();
           if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
           m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
         }
 
-        bool has_children(std::size_t i) const {
+        bool has_children(size_type i) const {
           return !m_metadata[i].is_leaf;
         }
 
         bool any_have_children() const {
           bool result = false;
-          for (std::size_t i = 0; i < m_metadata.size(); ++i) {
+          for (size_type i = 0; i < m_metadata.size(); ++i) {
             result |= has_children(i);
           }
           return result;
@@ -188,27 +188,27 @@ namespace mra {
           return all_leaf;
         }
 
-        bool& is_leaf(std::size_t i) {
+        bool& is_leaf(size_type i) {
           return m_metadata[i].is_leaf;
         }
 
-        bool is_leaf(std::size_t i) const {
+        bool is_leaf(size_type i) const {
           return m_metadata[i].is_leaf;
         }
 
-        bool& is_child_leaf(std::size_t i, std::size_t child) {
+        bool& is_child_leaf(size_type i, size_type child) {
           return m_metadata[i].is_child_leaf[child];
         }
 
-        bool is_leaf(std::size_t i, std::size_t child) const {
+        bool is_leaf(size_type i, size_type child) const {
           return m_metadata[i].is_child_leaf[child];
         }
 
-        T& sum(std::size_t i) {
+        T& sum(size_type i) {
           return m_metadata[i].sum;
         }
 
-        T sum(std::size_t i) const {
+        T sum(size_type i) const {
           return m_metadata[i].sum;
         }
 
@@ -225,17 +225,17 @@ namespace mra {
           return m_coeffs;
         }
 
-        view_type coeffs_view(std::size_t i) {
+        view_type coeffs_view(size_type i) {
           /* assuming all dims > 1 == K */
-          const std::size_t K = m_coeffs.dim(1);
-          const std::size_t K2NDIM = std::pow(K, NDIM);
+          const size_type K = m_coeffs.dim(1);
+          const size_type K2NDIM = std::pow(K, NDIM);
           return view_type(m_coeffs.data() + (i*K2NDIM), K);
         }
 
-        const_view_type coeffs_view(std::size_t i) const {
+        const_view_type coeffs_view(size_type i) const {
           /* assuming all dims > 1 == K */
-          const std::size_t K = m_coeffs.dim(1);
-          const std::size_t K2NDIM = std::pow(K, NDIM);
+          const size_type K = m_coeffs.dim(1);
+          const size_type K2NDIM = std::pow(K, NDIM);
           return const_view_type(m_coeffs.data() + (i*K2NDIM), K);
         }
 
@@ -247,7 +247,7 @@ namespace mra {
           return m_key;
         }
 
-        std::size_t count() const {
+        size_type count() const {
           return m_metadata.size();
         }
 
@@ -289,13 +289,13 @@ namespace mra {
         FunctionsCompressedNode() = default; // needed for serialization
 
         /* constructs a node for N functions with zero coefficients */
-        FunctionsCompressedNode(const Key<NDIM>& key, std::size_t N)
+        FunctionsCompressedNode(const Key<NDIM>& key, size_type N)
         : m_key(key)
         , m_coeffs()
         , m_is_child_leafs(N)
         { }
 
-        FunctionsCompressedNode(const Key<NDIM>& key, std::size_t N, std::size_t K)
+        FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K)
         : m_key(key)
         , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K))
         , m_is_child_leafs(N)
@@ -305,9 +305,9 @@ namespace mra {
          * Allocate space for coefficients using K.
          * The node must be empty before and will not be empty afterwards.
          */
-        void allocate(std::size_t K) {
+        void allocate(size_type K) {
           if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
-          std::size_t N = m_is_child_leafs.size();
+          size_type N = m_is_child_leafs.size();
           if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
           m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
         }
@@ -318,17 +318,17 @@ namespace mra {
         FunctionsCompressedNode& operator=(FunctionsCompressedNode&& other) = default;
         FunctionsCompressedNode& operator=(const FunctionsCompressedNode& other) = delete;
 
-        bool has_children(std::size_t i, size_t childindex) const {
+        bool has_children(size_type i, int childindex) const {
             assert(childindex < Key<NDIM>::num_children());
             assert(i < m_is_child_leafs.size());
             return !m_is_child_leafs[i][childindex];
         }
 
-        std::array<bool, Key<NDIM>::num_children()>& is_child_leaf(std::size_t i) {
+        std::array<bool, Key<NDIM>::num_children()>& is_child_leaf(size_type i) {
           return m_is_child_leafs[i];
         }
 
-        bool is_child_leaf(std::size_t i, std::size_t child) const {
+        bool is_child_leaf(size_type i, size_type child) const {
           return m_is_child_leafs[i][child];
         }
 
@@ -348,7 +348,7 @@ namespace mra {
           return m_key;
         }
 
-        std::size_t count() const {
+        size_type count() const {
           return m_is_child_leafs.size();
         }
 
@@ -356,17 +356,17 @@ namespace mra {
           return m_coeffs.empty();
         }
 
-        view_type coeffs_view(std::size_t i) {
+        view_type coeffs_view(size_type i) {
           /* assuming all dims > 1 == K */
-          const std::size_t K = m_coeffs.dim(1);
-          const std::size_t K2NDIM = std::pow(K, NDIM);
+          const size_type K = m_coeffs.dim(1);
+          const size_type K2NDIM = std::pow(K, NDIM);
           return view_type(m_coeffs.data() + (i*K2NDIM), K);
         }
 
-        const_view_type coeffs_view(std::size_t i) const {
+        const_view_type coeffs_view(size_type i) const {
           /* assuming all dims > 1 == K */
-          const std::size_t K = m_coeffs.dim(1);
-          const std::size_t K2NDIM = std::pow(K, NDIM);
+          const size_type K = m_coeffs.dim(1);
+          const size_type K2NDIM = std::pow(K, NDIM);
           return const_view_type(m_coeffs.data() + (i*K2NDIM), K);
         }
 
@@ -388,7 +388,7 @@ namespace mra {
 
     template <typename T, Dimension NDIM, typename ostream>
     ostream& operator<<(ostream& s, const FunctionsReconstructedNode<T,NDIM>& node) {
-      for (std::size_t i = 0; i < node.count(); ++i) {
+      for (size_type i = 0; i < node.count(); ++i) {
         s << "FunctionsReconstructedNode[" << i << "](" << node.key() << ", leaf " << node.is_leaf(i) << ", norm " << mra::normf(node.coeffs_view(i)) << ")";
       }
       return s;
@@ -396,7 +396,7 @@ namespace mra {
 
     template <typename T, Dimension NDIM, typename ostream>
     ostream& operator<<(ostream& s, const FunctionsCompressedNode<T,NDIM>& node) {
-      for (std::size_t i = 0; i < node.count(); ++i) {
+      for (size_type i = 0; i < node.count(); ++i) {
         s << "FunctionsCompressedNode[" << i << "](" << node.key() << ", norm " << mra::normf(node.coeffs_view(i)) << ")";
       }
       return s;

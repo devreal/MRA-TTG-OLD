@@ -9,7 +9,7 @@
 namespace mra {
 
     /// Extracts the n'th bit as 0 or 1
-    inline static Translation get_bit(size_t bits, Dimension n) {return ((bits>>n) & 0x1ul);}
+    inline static Translation get_bit(int bits, Dimension n) {return ((bits>>n) & 0x1ul);}
 
     /// Extracts the low bit as 0 or 1
     inline static Translation low_bit(Translation l) {return l & Translation(1);}
@@ -29,7 +29,7 @@ namespace mra {
         }
 
     public:
-        static constexpr size_t num_children() { return (1ul<<NDIM); }
+        static constexpr int num_children() { return (1ul<<NDIM); }
 
         /// Default constructor is deliberately default so that is POD
         SCOPE Key() = default;
@@ -107,22 +107,22 @@ namespace mra {
         }
 
         /// Used by iterator to increment child translation
-        SCOPE void next_child(size_t& bits) {
-            size_t oldbits = bits++;
+        SCOPE void next_child(int& bits) {
+            int oldbits = bits++;
             for (Dimension d = 0; d < NDIM; ++d) {
                 l[d] += get_bit(bits, d) - get_bit(oldbits,d);
             }
         }
 
         /// Map translation to child index in parent which is formed from binary code (bits)
-        SCOPE size_t childindex() const {
-            size_t b = low_bit(l[NDIM-1]);
+        SCOPE int childindex() const {
+            int b = low_bit(l[NDIM-1]);
             for (Dimension d=NDIM-1; d>0; d--) b = (b<<1) | low_bit(l[d-1]);
             return b;
         }
 
         /// Return the Key of the child at position idx \in [0, 1<<NDIM)
-        SCOPE Key<NDIM> child_at(size_t idx) {
+        SCOPE Key<NDIM> child_at(int idx) {
             assert(n<MAX_LEVEL);
             assert(idx<num_children());
             std::array<Translation,NDIM> l = this->l;
@@ -176,35 +176,35 @@ namespace mra {
         return Key<3>(n+1, {(l[0]<<1)+1,(l[1]<<1)+1,(l[2]<<1)+1});
     }
 
-    template <> inline SCOPE void Key<1>::next_child(size_t& bits) {
+    template <> inline SCOPE void Key<1>::next_child(int& bits) {
         bits++; l[0]++;
         rehash();
     }
 
-    template <> inline SCOPE void Key<2>::next_child(size_t& bits) {
-        size_t oldbits = bits++;
+    template <> inline SCOPE void Key<2>::next_child(int& bits) {
+        int oldbits = bits++;
         l[0] +=  (bits&0x1)     -  (oldbits&0x1);
         l[1] += ((bits&0x2)>>1) - ((oldbits&0x2)>>1);
         rehash();
     }
 
-    template <> inline SCOPE void Key<3>::next_child(size_t& bits) {
-        size_t oldbits = bits++;
+    template <> inline SCOPE void Key<3>::next_child(int& bits) {
+        int oldbits = bits++;
         l[0] +=  (bits&0x1)     -  (oldbits&0x1);
         l[1] += ((bits&0x2)>>1) - ((oldbits&0x2)>>1);
         l[2] += ((bits&0x4)>>2) - ((oldbits&0x4)>>2);
         rehash();
     }
 
-    template <> inline SCOPE size_t Key<1>::childindex() const {
+    template <> inline SCOPE int Key<1>::childindex() const {
         return l[0]&0x1;
     }
 
-    template <> inline SCOPE size_t Key<2>::childindex() const {
+    template <> inline SCOPE int Key<2>::childindex() const {
         return ((l[1]&0x1)<<1) | (l[0]&0x1);
     }
 
-    template <> inline SCOPE size_t Key<3>::childindex() const {
+    template <> inline SCOPE int Key<3>::childindex() const {
         return ((l[2]&0x1)<<2)  | ((l[1]&0x1)<<1) | (l[0]&0x1);
     }
 
@@ -213,8 +213,8 @@ namespace mra {
     class KeyChildren {
         struct iterator {
             Key<NDIM> value;
-            size_t bits;
-            SCOPE iterator (const Key<NDIM>& value, size_t bits) : value(value), bits(bits) {}
+            int bits;
+            SCOPE iterator (const Key<NDIM>& value, int bits) : value(value), bits(bits) {}
             SCOPE operator const Key<NDIM>&() const {return value;}
             SCOPE const Key<NDIM>& operator*() const {return value;}
             SCOPE iterator& operator++() {
@@ -224,7 +224,7 @@ namespace mra {
             SCOPE bool operator!=(const iterator& other) {return bits != other.bits;}
 
             /// Provides the index of the child (0, 1, ..., Key<NDIM>::num_children-1) while iterating
-            SCOPE size_t index() const {return bits;}
+            SCOPE int index() const {return bits;}
         };
         iterator start, finish;
 
@@ -240,7 +240,7 @@ namespace mra {
 
     template <Dimension NDIM>
     std::ostream& operator<<(std::ostream& s, const Key<NDIM>& key) {
-        s << "Key<" << size_t(NDIM) << ">(" << size_t(key.level()) << "," << key.translation() << ")";
+        s << "Key<" << int(NDIM) << ">(" << int(key.level()) << "," << key.translation() << ")";
         return s;
     }
 }
@@ -249,7 +249,7 @@ namespace std {
     /// Ensures key satifies std::hash protocol
     template <mra::Dimension NDIM>
     struct hash<mra::Key<NDIM>> {
-        SCOPE size_t operator()(const mra::Key<NDIM>& s) const noexcept { return s.hash(); }
+        SCOPE int operator()(const mra::Key<NDIM>& s) const noexcept { return s.hash(); }
     };
 }
 
