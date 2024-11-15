@@ -18,6 +18,9 @@ namespace mra {
 
     using Process = uint32_t; //< MPI process rank (>=0)
 
+    using size_type = uint_fast32_t; // should be enough for a while
+    using ssize_type = std::make_signed_t<size_type>;
+
     static constexpr Level MAX_LEVEL = sizeof(Translation)*8 - 1; //< Maximum level or depth of adaptive refinement
 
     //template <typename T, Dimension NDIM> using Coordinate = std::array<T,size_t(NDIM)>; //< Type of coordinate in NDIM dimensions

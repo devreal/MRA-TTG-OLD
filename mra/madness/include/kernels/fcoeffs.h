@@ -14,9 +14,9 @@ namespace mra {
   /* Returns the total size of temporary memory needed for
   * the project() kernel. */
   template<mra::Dimension NDIM>
-  SCOPE std::size_t fcoeffs_tmp_size(std::size_t K) {
-  const size_t K2NDIM = std::pow(K,NDIM);
-  const std::size_t TWOK2NDIM = std::pow(2*K, NDIM);
+  SCOPE size_type fcoeffs_tmp_size(size_type K) {
+  const size_type K2NDIM = std::pow(K,NDIM);
+  const size_type TWOK2NDIM = std::pow(2*K, NDIM);
   return (3*TWOK2NDIM) // workspace, values and r
        + (NDIM*K2NDIM) // xvec in fcube
        + (NDIM*K)      // x in fcube
@@ -31,7 +31,7 @@ namespace mra {
       const T* gldata,
       const Fn& f,
       Key<NDIM> key,
-      std::size_t K,
+      size_type K,
       T* tmp,
       const T* phibar_ptr,
       T* coeffs_ptr,
@@ -40,8 +40,8 @@ namespace mra {
       T thresh)
     {
       bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-      const std::size_t K2NDIM = std::pow(K, NDIM);
-      const std::size_t TWOK2NDIM = std::pow(2*K, NDIM);
+      const size_type K2NDIM = std::pow(K, NDIM);
+      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       /* reconstruct tensor views from pointers
       * make sure we have the values at the same offset (0) as in kernel 1 */
       SHARED TensorView<T, NDIM> values, r, child_values, workspace, coeffs;
@@ -115,8 +115,8 @@ namespace mra {
       const T* gldata,
       const Fn* fns,
       Key<NDIM> key,
-      std::size_t N,
-      std::size_t K,
+      size_type N,
+      size_type K,
       T* tmp,
       const T* phibar_ptr,
       T* coeffs_ptr,
@@ -124,15 +124,13 @@ namespace mra {
       bool *is_leaf,
       T thresh)
     {
-      const size_t K2NDIM = std::pow(K,NDIM);
+      const size_type K2NDIM = std::pow(K,NDIM);
       /* adjust pointers for the function of each block */
-      int blockid = blockIdx.x;
-      for (std::size_t i = blockid; i < N; i += blockDim.x) {
-        fcoeffs_kernel_impl(D, gldata, fns[i], key, K,
-                            &tmp[(fcoeffs_tmp_size<NDIM>(K)*i)],
-                            phibar_ptr, coeffs_ptr+(i*K2NDIM),
-                            hgT_ptr, &is_leaf[i], thresh);
-      }
+      size_type blockid = blockIdx.x;
+      fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K,
+                          &tmp[(fcoeffs_tmp_size<NDIM>(K)*blockid)],
+                          phibar_ptr, coeffs_ptr+(blockid*K2NDIM),
+                          hgT_ptr, &is_leaf[blockid], thresh);
     }
 
   } // namespace detail
@@ -146,8 +144,8 @@ namespace mra {
       const T* gldata,
       const Fn* fns,
       const mra::Key<NDIM>& key,
-      std::size_t N,
-      std::size_t K,
+      size_type N,
+      size_type K,
       mra::TensorView<T, NDIM+1>& coeffs_view,
       const mra::TensorView<T, 2>& phibar_view,
       const mra::TensorView<T, 2>& hgT_view,

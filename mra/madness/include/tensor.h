@@ -18,7 +18,6 @@ namespace mra {
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
-    using size_type = std::size_t;
     using allocator_type = Allocator;
     using view_type = TensorView<value_type, NDIM>;
     using const_view_type = std::add_const_t<TensorView<value_type, NDIM>>;
@@ -42,7 +41,7 @@ namespace mra {
     }
 
     template<std::size_t... Is>
-    static auto create_dims_array(std::size_t dim, std::index_sequence<Is...>) {
+    static auto create_dims_array(size_type dim, std::index_sequence<Is...>) {
       return std::array{((void)Is, dim)...};
     }
 
@@ -50,7 +49,7 @@ namespace mra {
     Tensor() = default;
 
     /* generic */
-    explicit Tensor(std::size_t dim)
+    explicit Tensor(size_type dim)
     : ttvalue_type()
     , m_dims(create_dims_array(dim, std::make_index_sequence<NDIM>{}))
     , m_buffer(size())
@@ -151,14 +150,14 @@ namespace mra {
     const Dimension ndim = t.ndim();
 
     auto dims = t.dims();
-    size_t maxdim = std::max_element(dims.begin(), dims.end());
-    size_t index_width = std::max(std::log10(maxdim), 6.0);
+    size_type maxdim = std::max_element(dims.begin(), dims.end());
+    size_type index_width = std::max(std::log10(maxdim), 6.0);
     std::ios::fmtflags oldflags = s.setf(std::ios::scientific);
     long oldprec = s.precision();
     long oldwidth = s.width();
 
     const Dimension lastdim = ndim-1;
-    const size_t lastdimsize = t.dim(lastdim);
+    const size_type lastdimsize = t.dim(lastdim);
 
     for (auto it=t.begin(); it!=t.end(); ) {
       const auto& index = it.index();
@@ -172,7 +171,7 @@ namespace mra {
       s << " *]";
       // s.setf(std::ios::scientific);
       s.setf(std::ios::fixed);
-      for (size_t i=0; i<lastdimsize; ++i,++it) { //<<< it incremented here!
+      for (size_type i=0; i<lastdimsize; ++i,++it) { //<<< it incremented here!
         // s.precision(4);
         s << " ";
         //s.precision(8);

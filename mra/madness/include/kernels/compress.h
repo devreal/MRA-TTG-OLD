@@ -17,8 +17,8 @@
 namespace mra {
 
   template<mra::Dimension NDIM>
-  SCOPE std::size_t compress_tmp_size(std::size_t K) {
-    const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+  SCOPE size_type compress_tmp_size(size_type K) {
+    const size_type TWOK2NDIM = std::pow(2*K,NDIM);
     return (2*TWOK2NDIM); // s & workspace
   }
 
@@ -27,7 +27,7 @@ namespace mra {
     template<typename T, Dimension NDIM>
     DEVSCOPE void compress_kernel_impl(
       Key<NDIM> key,
-      std::size_t K,
+      size_type K,
       T* p_ptr,
       T* result_ptr,
       const T* hgT_ptr,
@@ -38,8 +38,8 @@ namespace mra {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
       {   // Collect child coeffs and leaf info
         /* construct tensors */
-        const size_t K2NDIM    = std::pow(  K,NDIM);
-        const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+        const size_type K2NDIM    = std::pow(  K,NDIM);
+        const size_type TWOK2NDIM = std::pow(2*K,NDIM);
         SHARED TensorView<T,NDIM> s, d, p, workspace;
         SHARED TensorView<T,2> hgT;
         if (is_t0) {
@@ -72,8 +72,8 @@ namespace mra {
     template<typename T, Dimension NDIM>
     GLOBALSCOPE void compress_kernel(
       Key<NDIM> key,
-      std::size_t N,
-      std::size_t K,
+      size_type N,
+      size_type K,
       T* p_ptr,
       T* result_ptr,
       const T* hgT_ptr,
@@ -82,30 +82,29 @@ namespace mra {
       const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
     {
       const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
-      const size_t K2NDIM    = std::pow(  K,NDIM);
-      const size_t TWOK2NDIM = std::pow(2*K,NDIM);
+      const size_type K2NDIM    = std::pow(  K,NDIM);
+      const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
+      int blockid = blockIdx.x;
 
-      for (std::size_t blockid = blockIdx.x; blockid < N; blockid += blockDim.x) {
-        if (is_t0) {
-          for (std::size_t i = 0; i < Key<NDIM>::num_children(); ++i) {
-            block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockid] : nullptr;
-          }
+      if (is_t0) {
+        for (int i = 0; i < Key<NDIM>::num_children(); ++i) {
+          block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockid] : nullptr;
         }
-        /* no need to sync threads here */
-        compress_kernel_impl(key, K, &p_ptr[K2NDIM*blockid], &result_ptr[TWOK2NDIM*blockid],
-                             hgT_ptr, &tmp[compress_tmp_size<NDIM>(K)*blockid], &d_sumsq[blockid],
-                             block_in_ptrs);
-
       }
+      /* no need to sync threads here */
+      compress_kernel_impl(key, K, &p_ptr[K2NDIM*blockid], &result_ptr[TWOK2NDIM*blockid],
+                           hgT_ptr, &tmp[compress_tmp_size<NDIM>(K)*blockid], &d_sumsq[blockid],
+                           block_in_ptrs);
+
     }
   } // namespace detail
 
   template<typename T, Dimension NDIM>
   void submit_compress_kernel(
     const Key<NDIM>& key,
-    std::size_t N,
-    std::size_t K,
+    size_type N,
+    size_type K,
     TensorView<T, NDIM+1>& p_view,
     TensorView<T, NDIM+1>& result_view,
     const TensorView<T, 2>& hgT_view,

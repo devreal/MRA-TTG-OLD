@@ -18,30 +18,30 @@ namespace mra {
 #ifdef __CUDA_ARCH__
       /* distribute the last three dimensions across the z, y, x dimension of the block */
       if constexpr (I == NDIM-3) {
-        for (std::size_t i = threadIdx.z; i < t.dim(I); i += blockDim.z) {
+        for (size_type i = threadIdx.z; i < t.dim(I); i += blockDim.z) {
           foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else if constexpr (I == NDIM-2) {
-        for (std::size_t i = threadIdx.y; i < t.dim(I); i += blockDim.y) {
+        for (size_type i = threadIdx.y; i < t.dim(I); i += blockDim.y) {
           foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else if constexpr (I == NDIM-1) {
-        for (std::size_t i = threadIdx.x; i < t.dim(I); i += blockDim.x) {
+        for (size_type i = threadIdx.x; i < t.dim(I); i += blockDim.x) {
           fn(args..., i);
         }
       } else {
         /* general index (NDIM > 3)*/
-        for (std::size_t i = 0; i < t.dim(I); ++i) {
+        for (size_type i = 0; i < t.dim(I); ++i) {
           foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       }
 #else  // __CUDA_ARCH__
       if constexpr (I < NDIM-1) {
-        for (std::size_t i = 0; i < t.dim(I); ++i) {
+        for (size_type i = 0; i < t.dim(I); ++i) {
           foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else {
-        for (std::size_t i = 0; i < t.dim(I); ++i) {
+        for (size_type i = 0; i < t.dim(I); ++i) {
           //if constexpr (NDIM == 3) printf("foreach_idx %zu, %zu, %zu\n", args..., i);
           //if constexpr (NDIM == 4) printf("foreach_idx %zu, %zu, %zu, %zu\n", args..., i);
           fn(args..., i);
@@ -61,13 +61,13 @@ namespace mra {
 
   namespace detail {
 
-    template <typename TensorT, size_t num_dimensions>
+    template <typename TensorT, Dimension NDIM>
     struct base_tensor_iterator {
-      size_t count;
+      size_type count;
       const TensorT& t;
-      std::array<size_t,std::max(size_t(1),num_dimensions)> indx = {};
+      std::array<size_type, std::max(Dimension(1), NDIM)> indx = {};
 
-      constexpr base_tensor_iterator (size_t count, const TensorT& t)
+      constexpr base_tensor_iterator (size_type count, const TensorT& t)
       : count(count)
       , t(t)
       {}
@@ -75,7 +75,7 @@ namespace mra {
       void inc() {
         assert(count < t.size());
         count++;
-        for (int d=int(num_dimensions)-1; d>=0; --d) { // must be signed loop variable!
+        for (int d=int(NDIM)-1; d>=0; --d) { // must be signed loop variable!
           indx[d]++;
           if (indx[d]<t.dim(d)) {
             break;
@@ -92,18 +92,19 @@ namespace mra {
 
   class Slice {
   public:
-    static constexpr long END = std::numeric_limits<long>::max();
-    long start;  //< Start of slice (must be signed type)
-    long finish; //< Exclusive end of slice (must be signed type)
-    long stride;   //< Stride for slice (must be signed type)
-    long count;  //< Number of elements in slice (not known until dimension is applied; negative indicates not computed)
+    using size_type = int;
+    static constexpr size_type END = std::numeric_limits<size_type>::max();
+    size_type start;  //< Start of slice (must be signed type)
+    size_type finish; //< Exclusive end of slice (must be signed type)
+    size_type stride;   //< Stride for slice (must be signed type)
+    size_type count;  //< Number of elements in slice (not known until dimension is applied; negative indicates not computed)
 
     SCOPE Slice() : start(0), finish(END), stride(1), count(-1) {}; // indicates entire range
-    SCOPE Slice(long start) : start(start), finish(start+1), stride(1) {} // a single element
-    SCOPE Slice(long start, long end, long stride=1) : start(start), finish(end), stride(stride) {};
+    SCOPE Slice(size_type start) : start(start), finish(start+1), stride(1) {} // a single element
+    SCOPE Slice(size_type start, size_type end, size_type stride=1) : start(start), finish(end), stride(stride) {};
 
     /// Once we know the dimension we adjust the start/end/count/finish to match, and do sanity checks
-    SCOPE void apply_dim(long dim) {
+    SCOPE void apply_dim(size_type dim) {
         if (start == END) {start = dim-1;}
         else if (start < 0) {start += dim;}
 
@@ -111,32 +112,32 @@ namespace mra {
         else if (finish == END && stride < 0) {finish = -1;}
         else if (finish < 0) {finish += dim;}
 
-        count = std::max(0l,((finish-start-stride/std::abs(stride))/stride+1));
+        count = std::max(size_type(0),((finish-start-stride/std::abs(stride))/stride+1));
         assert((count==0) || ((count<=dim) && (start>=0 && start<=dim)));
         finish = start + count*stride; // finish is one past the last element
     }
 
     struct iterator {
-        long value;
-        const long stride;
-        iterator (long value, long stride) : value(value), stride(stride) {}
-        operator long() const {return value;}
-        long operator*() const {return value;}
-        iterator& operator++ () {value+=stride; return *this;}
-        bool operator!=(const iterator&other) {return value != other.value;}
+      size_type value;
+      const size_type stride;
+      iterator (size_type value, size_type stride) : value(value), stride(stride) {}
+      operator size_type() const {return value;}
+      size_type operator*() const {return value;}
+      iterator& operator++ () {value+=stride; return *this;}
+      bool operator!=(const iterator&other) {return value != other.value;}
     };
 
     iterator begin() const {assert(count>=0); return iterator(start,stride); }
     iterator end() const {assert(count>=0); return iterator(finish,stride); }
 
     SCOPE Slice& operator=(const Slice& other) {
-        if (this != &other) {
-            start = other.start;
-            finish = other.finish;
-            stride = other.stride;
-            count = other.count;
-        }
-        return *this;
+      if (this != &other) {
+        start = other.start;
+        finish = other.finish;
+        stride = other.stride;
+        count = other.count;
+      }
+      return *this;
     }
   }; // Slice
 
@@ -163,8 +164,8 @@ namespace mra {
     // Computes index in dimension d for underlying tensor using slice info
 
     template<std::size_t I, std::size_t... Is, typename Arg, typename... Args>
-    SCOPE std::size_t offset_helper(std::index_sequence<I, Is...>, Arg arg, Args... args) const {
-      std::size_t idx = (m_slices[I].start + arg)*m_slices[I].stride;
+    SCOPE size_type offset_helper(std::index_sequence<I, Is...>, Arg arg, Args... args) const {
+      size_type idx = (m_slices[I].start + arg)*m_slices[I].stride;
       if constexpr (sizeof...(Args) > 0) {
         idx += offset_helper(std::index_sequence<Is...>{}, std::forward<Args>(args)...);
       }
@@ -192,8 +193,8 @@ namespace mra {
     {
       /* adjust the slice dimensions to the tensor */
       auto view_slices = view.slices();
-      std::size_t stride = 1;
-      for (ssize_t d = ndim()-1; d >= 0; --d) {
+      size_type stride = 1;
+      for (ssize_type d = ndim()-1; d >= 0; --d) {
         m_slices[d].apply_dim(view.dim(d));
         /* stride stores the stride in the original TensorView */
         m_slices[d].stride *= stride;
@@ -219,21 +220,21 @@ namespace mra {
     }
 
     /// Returns number of elements in the tensor at runtime
-    SCOPE size_t size() const {
-      std::size_t nelem = 1;
-      for (size_t d = 0; d < ndim(); ++d) {
+    SCOPE size_type size() const {
+      size_type nelem = 1;
+      for (size_type d = 0; d < ndim(); ++d) {
           nelem *= m_slices[d].count;
       }
       return nelem;
     }
 
     /// Returns size of dimension d at runtime
-    SCOPE std::size_t dim(size_t d) const { return m_slices[d].count; }
+    SCOPE size_type dim(size_type d) const { return m_slices[d].count; }
 
     /// Returns array containing size of each dimension at runtime
-    SCOPE std::array<size_t, ndim()> dims() const {
-      std::array<size_t, ndim()> dimensions;
-      for (size_t d = 0; d < ndim(); ++d) {
+    SCOPE std::array<size_type, ndim()> dims() const {
+      std::array<size_type, ndim()> dimensions;
+      for (size_type d = 0; d < ndim(); ++d) {
         dimensions[d] = m_slices[d].count;
       }
       return dimensions;
@@ -299,7 +300,6 @@ namespace mra {
   public:
     using value_type = std::decay_t<T>;
     using const_value_type = std::add_const_t<value_type>;
-    using size_type = std::size_t;
     SCOPE static constexpr Dimension ndim() { return NDIM; }
     using dims_array_t = std::array<size_type, ndim()>;
     SCOPE static constexpr bool is_tensor() { return true; }
@@ -315,21 +315,6 @@ namespace mra {
               + offset_impl<I+1>(std::forward<Dims>(idxs)...);
       }
     }
-
-    /* TODO: unused right now, should be used to condense N dimensions down to 3 for devices */
-#if 0
-    template<typename Fn, typename... Args, std::size_t I, std::size_t... Is>
-    void last_level_op_helper(Fn&& fn, std::index_sequence<I, Is...>, Args... args) {
-      if constexpr (sizeof...(Is) == 0) {
-        fn(args...);
-      } else {
-        /* iterate over this dimension and recurse down one */
-        for (size_type i = 0; i < m_dims[I]; ++i) {
-          last_level_op_helper(std::forward<Fn>(fn), std::index_sequence<Is...>{}, args..., i);
-        }
-      }
-    }
-#endif // 0
 
   public:
     TensorView() = default; // needed for __shared__ construction
@@ -390,8 +375,8 @@ namespace mra {
     }
 
     SCOPE size_type stride(size_type d) const {
-      std::size_t s = 1;
-      for (std::size_t i = 0; i < d; ++i) {
+      size_type s = 1;
+      for (int i = 0; i < d; ++i) {
         s *= m_dims[i];
       }
       return s;
@@ -440,7 +425,7 @@ namespace mra {
 
     SCOPE std::array<Slice, ndim()> slices() const {
       std::array<Slice, ndim()> res;
-      for (std::size_t d = 0; d < ndim(); ++d) {
+      for (int d = 0; d < ndim(); ++d) {
         res[d] = Slice(0, m_dims[d]);
       }
       return res;
@@ -498,9 +483,9 @@ namespace mra {
     }
 
 
-    template<size_t ndimactive>
+    template<Dimension ndimactive>
     struct iterator : public detail::base_tensor_iterator<TensorView,ndimactive> {
-      iterator (size_t count, TensorView& t)
+      iterator (size_type count, TensorView& t)
       : detail::base_tensor_iterator<TensorView,ndimactive>(count, t)
       { }
       value_type& operator*() { return this->t.m_ptr[this->count]; }
@@ -509,9 +494,9 @@ namespace mra {
       bool operator==(const iterator& other) {return this->count == other.count;}
     };
 
-    template<size_t ndimactive>
+    template<Dimension ndimactive>
     struct const_iterator : public detail::base_tensor_iterator<TensorView,ndimactive> {
-      const_iterator (size_t count, const TensorView& t)
+      const_iterator (size_type count, const TensorView& t)
       : detail::base_tensor_iterator<TensorView,ndimactive>(count, t)
       { }
       value_type operator*() const { return this->t.m_ptr[this->count]; }
