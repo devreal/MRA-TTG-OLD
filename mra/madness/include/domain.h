@@ -52,7 +52,7 @@ namespace mra {
         Domain& operator=(const Domain& domain) = default;
 
 
-        SCOPE void set_cube(double lo, double hi) {
+        void set_cube(double lo, double hi) {
             for (Dimension d = 0; d < NDIM; ++d) set(d, lo, hi);
             initialized = true;
         }
