@@ -10,7 +10,7 @@ namespace mra {
     template <typename T, Dimension NDIM>
     DEVSCOPE void gaxpy_kernel_impl(
       const T* nodeA, const T* nodeB, T* nodeR,
-      const T scalarA, const T scalarB, std::size_t K)
+      const T scalarA, const T scalarB, size_type K)
     {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
       SHARED TensorView<T, NDIM> nA, nB, nR;
@@ -31,15 +31,14 @@ namespace mra {
     GLOBALSCOPE void gaxpy_kernel(
       const T* nodeA, const T* nodeB, T* nodeR,
       const T scalarA, const T scalarB,
-      std::size_t N, std::size_t K, const Key<NDIM>& key)
+      size_type N, size_type K, const Key<NDIM>& key)
     {
-      const size_t K2NDIM = std::pow(K, NDIM);
-      for (std::size_t blockid = blockIdx.x; blockid < N; blockid += blockDim.x) {
-        gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
-                                   nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
-                                   &nodeR[K2NDIM*blockid],
-                                   scalarA, scalarB, K);
-      }
+      const size_type K2NDIM = std::pow(K, NDIM);
+      size_type blockid = blockIdx.x;
+      gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
+                                 nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
+                                 &nodeR[K2NDIM*blockid],
+                                 scalarA, scalarB, K);
     }
   } // namespace detail
 
@@ -52,8 +51,8 @@ namespace mra {
     TensorView<T, NDIM+1>& funcR,
     const T scalarA,
     const T scalarB,
-    std::size_t N,
-    std::size_t K,
+    size_type N,
+    size_type K,
     cudaStream_t stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);

@@ -5,6 +5,7 @@
 #include <cassert>
 
 #include "platform.h"
+#include "types.h"
 
 #include "ttg/buffer.h"
 
@@ -26,22 +27,22 @@ namespace mra {
   }
 
   template<typename T>
-  inline void GLget(const T** x, const T **w, std::size_t N) {
+  inline void GLget(const T** x, const T **w, size_type N) {
     assert(N>0 && N<=64);
     *x = &detail::gl_data[2*(N-1)  ][0];
     *w = &detail::gl_data[2*(N-1)+1][0];
   }
 
   /// Evaluate the first k Legendre scaling functions. p should be an array of k elements.
-  void legendre_scaling_functions(double x, size_t k, double *p);
+  void legendre_scaling_functions(double x, size_type k, double *p);
 
   /// Evaluate the first k Legendre scaling functions. p should be an array of k elements.
-  void legendre_scaling_functions(float x, size_t k, float *p);
+  void legendre_scaling_functions(float x, size_type k, float *p);
 
   bool GLinitialize();
 
   template<typename T>
-  SCOPE void GLget(const T* glptr, const T** x, const T **w, std::size_t N) {
+  SCOPE void GLget(const T* glptr, const T** x, const T **w, size_type N) {
     assert(N>0 && N<=64);
     T (*data)[64] = (T(*)[64])glptr;
     *x = &data[2*(N-1)  ][0];
