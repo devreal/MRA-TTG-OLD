@@ -47,14 +47,14 @@ namespace mra {
 
     /// Easy printing of pairs
     template <typename T, typename R>
-    SCOPE std::ostream& operator<<(std::ostream& s, const std::pair<T,R>& a) {
+    std::ostream& operator<<(std::ostream& s, const std::pair<T,R>& a) {
         s << "(" << a.first << "," << a.second << ")";
         return s;
     }
 
     /// Easy printing of arrays
     template <typename T, size_t N>
-    SCOPE std::ostream& operator<<(std::ostream& s, const std::array<T,N>& a) {
+    std::ostream& operator<<(std::ostream& s, const std::array<T,N>& a) {
         s << "[";
         for (std::size_t i = 0; i < a.size(); ++i) {
             s << a[i];
@@ -66,7 +66,7 @@ namespace mra {
 
     /// Easy printing of vectors
     template <typename T>
-    SCOPE std::ostream& operator<<(std::ostream& s, const std::vector<T>& a) {
+    std::ostream& operator<<(std::ostream& s, const std::vector<T>& a) {
         s << "[";
         for (std::size_t i = 0; i < a.size(); ++i) {
             s << a[i];
