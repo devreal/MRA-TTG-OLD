@@ -512,17 +512,17 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
 }
 
 template<typename T, mra::Dimension NDIM>
-auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
+auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
               const T scalarA, const T scalarB, const size_t N, const size_t K)
 {
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> S1, S2; // to balance trees
 
   auto func = [N, K, scalarA, scalarB](
             const mra::Key<NDIM>& key,
-            const mra::FunctionsReconstructedNode<T, NDIM>& t1,
-            const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
+            const mra::FunctionsCompressedNode<T, NDIM>& t1,
+            const mra::FunctionsCompressedNode<T, NDIM>& t2) -> TASKTYPE {
 
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
@@ -535,11 +535,11 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
     if (t1.empty() && t2.empty()) {
       /* send out an empty result */
-      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N);
       send_out(std::move(out));
     } else {
 
-      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
 
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer());
@@ -569,7 +569,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
         child_keys.push_back(child);
       }
       // TODO: do we care about the key here? if so we have to send instead
-      auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      auto t = mra::FunctionsCompressedNode<T, NDIM>(key, N);
       // mark all functions as leafs
       t.set_all_leaf(true);
 #ifndef MRA_ENABLE_HOST
@@ -696,9 +696,9 @@ void test(std::size_t N, std::size_t K) {
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
   gaussians.reserve(N);
-  T expnt = 30000.0;
+  // T expnt = 10000.0;
   for (int i = 0; i < N; ++i) {
-    //T expnt = 1500 + 1500*drand48();
+    T expnt = 1500 + 1500*drand48();
     mra::Coordinate<T,NDIM> r;
     for (size_t d=0; d<NDIM; d++) {
       r[d] = T(-6.0) + T(12.0)*drand48();
@@ -714,7 +714,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto gaxpy = make_gaxpy(reconstruct_result, reconstruct_result, gaxpy_result, T(1.0), T(1.0), N, K);
+  auto gaxpy = make_gaxpy(reconstruct, reconstruct_result, gaxpy_result, T(1.0), T(1.0), N, K);
   auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
@@ -745,6 +745,14 @@ void test(std::size_t N, std::size_t K) {
               << (std::chrono::duration_cast<std::chrono::microseconds>(end - beg).count()) / 1000
               << std::endl;
   }
+}
+template<typename T, mra::Dimension NDIM>
+void test_ops(std::size_t N, std::size_t K){
+  auto functiondata = mra::FunctionData<T,NDIM>(K);
+  mra::Domain<NDIM> D;
+  D.set_cube(-1.0,1.0);
+
+
 }
 
 int main(int argc, char **argv) {
