@@ -53,7 +53,13 @@ using Dim3 = mra::detail::dim3;
 #else  // __CUDACC__
 #define checkSubmit() do {} while(0)
 #define CALL_KERNEL(name, blocks, thread, shared, stream, args) \
-  name args
+  do { \
+    blockIdx = {0, 0, 0};                       \
+    for (std::size_t i = 0; i < blocks; ++i) {  \
+      blockIdx.x = i;                           \
+      name args;                                \
+    }                                           \
+  } while (0)
 #endif // __CUDACC__
 
 #if defined(__CUDA_ARCH__)
@@ -82,7 +88,7 @@ struct dim3 {
 static constexpr const dim3 threadIdx = {0, 0, 0};
 static constexpr const dim3 blockDim  = {1, 1, 1};
 static constexpr const dim3 gridDim   = {1, 1, 1};
-static constexpr const dim3 blockIdx  = {0, 0, 0};
+inline thread_local    dim3 blockIdx  = {0, 0, 0};
 
 /* point cudaStream_t to our own stream type */
 typedef ttg::device::Stream cudaStream_t;

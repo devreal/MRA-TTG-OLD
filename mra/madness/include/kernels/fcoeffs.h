@@ -15,12 +15,12 @@ namespace mra {
   * the project() kernel. */
   template<mra::Dimension NDIM>
   SCOPE size_type fcoeffs_tmp_size(size_type K) {
-  const size_type K2NDIM = std::pow(K,NDIM);
-  const size_type TWOK2NDIM = std::pow(2*K, NDIM);
-  return (3*TWOK2NDIM) // workspace, values and r
-       + (NDIM*K2NDIM) // xvec in fcube
-       + (NDIM*K)      // x in fcube
-       + (3*K2NDIM);   // workspace in transform, child_values, r
+    const size_type K2NDIM = std::pow(K,NDIM);
+    const size_type TWOK2NDIM = std::pow(2*K, NDIM);
+    return (3*TWOK2NDIM) // workspace, values and r
+        + (NDIM*K2NDIM) // xvec in fcube
+        + (NDIM*K)      // x in fcube
+        + (3*K2NDIM);   // workspace in transform, child_values, r
   }
 
   namespace detail {
@@ -60,6 +60,7 @@ namespace mra {
 
       /* check for our function */
       if ((key.level() < initial_level(f))) {
+        std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;
         coeffs = T(1e7); // set to obviously bad value to detect incorrect use
         *is_leaf = false;
       }
@@ -100,11 +101,12 @@ namespace mra {
         r_slice = 0.0; // zero sum coeffs so can easily compute norm of difference coeffs
         /* TensorView assignment synchronizes */
         T norm = mra::normf(r);
+        //std::cout << "project norm " << norm << " thresh " << thresh << std::endl;
         if (is_t0) {
           *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
-          //if (!*is_leaf) {
-          //  std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
-          //}
+          if (!*is_leaf) {
+            std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
+          }
         }
       }
     }
