@@ -4,6 +4,7 @@
 #include "platform.h"
 #include "types.h"
 #include "tensorview.h"
+#include "key.h"
 
 namespace mra {
   namespace detail {
@@ -24,7 +25,9 @@ namespace mra {
       /* compressed form */
       foreach_idx(nA, [&](auto... idx) {
         nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
+        // std::cout << "scalarA: " << scalarA << ", scalarB: " << scalarB << nR(idx...) << std::endl;
       });
+
     }
 
     template <typename T, Dimension NDIM>
