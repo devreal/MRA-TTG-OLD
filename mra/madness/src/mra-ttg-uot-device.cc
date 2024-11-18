@@ -58,10 +58,8 @@ auto make_project(
     }
     //std::cout << "project " << key << " all initial " << all_initial_level << std::endl;
     if (all_initial_level) {
-      std::vector<mra::Key<NDIM>> bcast_keys;
-      /* TODO: children() returns an iteratable object but broadcast() expects a contiguous memory range.
-                We need to fix broadcast to support any ranges */
-      for (auto child : children(key)) bcast_keys.push_back(child);
+        std::array<mra::Key<NDIM>, mra::Key<NDIM>::num_children()> bcast_keys;
+        for (auto child : children(key)) bcast_keys[child.childindex()] = child;
 
 #ifndef MRA_ENABLE_HOST
       outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
@@ -139,8 +137,8 @@ auto make_project(
 
       //std::cout << "project " << key << " all leaf " << result.is_all_leaf() << std::endl;
       if (!result.is_all_leaf()) {
-        std::vector<mra::Key<NDIM>> bcast_keys;
-        for (auto child : children(key)) bcast_keys.push_back(child);
+        std::array<mra::Key<NDIM>, mra::Key<NDIM>::num_children()> bcast_keys;
+        for (auto child : children(key)) bcast_keys[child.childindex()] = child;
 #ifndef MRA_ENABLE_HOST
         outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
@@ -564,10 +562,9 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDI
 
     /* balance trees if needed by sending empty nodes to missing inputs */
     auto balance_trees = [&]<std::size_t I>(){
-      std::vector<mra::Key<NDIM>> child_keys;
-      for (auto child : children(key)) {
-        child_keys.push_back(child);
-      }
+      std::array<mra::Key<NDIM>, mra::Key<NDIM>::num_children()> child_keys;
+      for (auto child : children(key)) child_keys[child.childindex()] = child;
+
       // TODO: do we care about the key here? if so we have to send instead
       auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
       // mark all functions as leafs
