@@ -8,9 +8,9 @@
 
 namespace mra {
 
-    static const size_t MAXK = 60;
+    constexpr const size_type MAXK = 60;
 
-    static double H0[MAXK][MAXK*MAXK] = {
+    constexpr const double H0[MAXK][MAXK*MAXK] = {
         // h0  1
         { 7.07106781186547462e-01 },
         // h0  2
@@ -258,18 +258,18 @@ namespace mra {
 
     namespace detail {
 
-        static inline double phase(size_t i) {
+        static inline double phase(size_type i) {
             return (i&0x1) ? -1.0 : 1.0;
         }
 
         // p should be [2k][2k]
         template <typename T>
-        void twoscale_get(size_t k, T* p) {
+        void twoscale_get(size_type k, T* p) {
             assert(k>=0 && k<= MAXK);
             const double* h0 = H0[k-1];
             const double* g0 = G0[k-1];
-            for (size_t i=0; i<k; i++) {
-                for (size_t j=0; j<k; j++) {
+            for (size_type i=0; i<k; i++) {
+                for (size_type j=0; j<k; j++) {
                     p[(i+0)*2*k + 0 + j] = h0[i*k + j];                // h0
                     p[(i+0)*2*k + k + j] = h0[i*k + j] * phase(i+j);   // h1
                     p[(i+k)*2*k + 0 + j] = g0[i*k + j];                // g0
@@ -278,8 +278,8 @@ namespace mra {
             }
         }
 
-        template void twoscale_get<double>(size_t k, double* p);
-        template void twoscale_get<float>(size_t k, float* p);
+        template void twoscale_get<double>(size_type k, double* p);
+        template void twoscale_get<float>(size_type k, float* p);
 
         static void mTxm_simple(long dimi, long dimj, long dimk, double* c, const double* a, const double* b) {
             // c(i,j) = c(i,j) + sum(k) a(k,i)*b(k,j)
@@ -308,7 +308,7 @@ namespace mra {
         bool twoscale_check() {
             // Test the two scale coefficients for orthogonality ... error should be about 8 ulp for k=60
             bool OK = true;
-            for (size_t k=1; k<=MAXK; ++k) {
+            for (size_type k=1; k<=MAXK; ++k) {
                 std::vector<double> hg(4*k*k,99.0), a(4*k*k,0.0), b(4*k*k,0.0);
 
                 twoscale_get(k, &hg[0]);
@@ -316,7 +316,7 @@ namespace mra {
                 mTxm_simple(2*k,2*k,2*k,a.data(),hg.data(),hg.data()); // hgT * hg
                 mxmT_simple(2*k,2*k,2*k,b.data(),hg.data(),hg.data()); // hg * hgT
 
-                size_t ij = 0;
+                size_type ij = 0;
                 // for (size_t i=0; i<2*k; i++) {
                 //     for (size_t j=0; j<2*k; j++) {
                 //         std::cout << i << " " << j << " " << hg[ij] << std::endl;
@@ -327,8 +327,8 @@ namespace mra {
 
                 ij = 0;
                 double maxerr = 0.0;
-                for (size_t i=0; i<2*k; i++) {
-                    for (size_t j=0; j<2*k; j++) {
+                for (size_type i=0; i<2*k; i++) {
+                    for (size_type j=0; j<2*k; j++) {
                         //std::cout << i << " " << j << " " << a[ij] << std::endl;
                         if (i == j) {
                             maxerr = std::max(maxerr,std::max(std::abs(a[ij]-1.0), std::abs(b[ij]-1.0)));
