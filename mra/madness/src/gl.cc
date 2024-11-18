@@ -161,22 +161,22 @@ namespace detail {
     // Evaluate the Legendre polynomials up to the given order at x in [-1,1].
 
     // p should be an array of order+1 elements.
-    static void legendre_polynomials(double x, size_t order, double *p) {
+    static void legendre_polynomials(double x, size_type order, double *p) {
         assert(detail::initialized);
         p[0] = 1.0;
         if (order == 0) return;
         p[1] = x;
-        for (size_t n=1; n<order; ++n)
+        for (size_type n=1; n<order; ++n)
             p[n+1] = (x*p[n] - p[n-1])*detail::nn1[n] + x*p[n];
     }
 
     /// Evaluate the first k Legendre scaling functions.
 
     /// p should be an array of k elements.
-    void legendre_scaling_functions(double x, size_t k, double *p) {
+    void legendre_scaling_functions(double x, size_type k, double *p) {
         assert(detail::initialized);
         legendre_polynomials(2.*x-1,k-1,p);
-        for (size_t n=0; n<k; ++n) {
+        for (size_type n=0; n<k; ++n) {
             p[n] = p[n]*detail::phi_norms[n];
         }
     }
@@ -184,20 +184,20 @@ namespace detail {
     /// Evaluate the first k Legendre scaling functions.
 
     /// p should be an array of k elements.
-    void legendre_scaling_functions(float x, size_t k, float *p) {
+    void legendre_scaling_functions(float x, size_type k, float *p) {
         // Evaluate in double and then truncate to float to ensure accuracy
         double dp[64];
         assert(k<=64);
         assert(detail::initialized);
         legendre_scaling_functions(double(x), k, dp);
-        for (size_t i=0; i<k; i++) p[i] = float(dp[i]);
+        for (size_type i=0; i<k; i++) p[i] = float(dp[i]);
     }
 
     // Used for checking .. the sum of the quadrature weights should be unity within a very few (1.5?) ulps
     static bool check_weight_sum() {
         bool OK = true;
         const double *x, *w;
-        for (auto n : range(size_t(1), size_t(65))) {
+        for (auto n : range(size_type(1), size_type(65))) {
             GLget(&x, &w, n);
             double sum = 0.0;
             for (auto i : range(n)) {
