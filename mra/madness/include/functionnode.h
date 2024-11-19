@@ -9,7 +9,7 @@ namespace mra {
 
     namespace detail {
 
-      template<Dimension NDIM, size_type... Is>
+      template<Dimension NDIM, std::size_t... Is>
       std::array<size_type, NDIM> make_dims_helper(size_type N, size_type K, std::index_sequence<Is...>) {
         return std::array<size_type, NDIM>{N, ((void)Is, K)...};
       }
