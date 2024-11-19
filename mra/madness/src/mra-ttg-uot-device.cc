@@ -558,35 +558,35 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       submit_gaxpy_kernel(key, t1_view, t2_view, out_view,
                           scalarA, scalarB, N, K, ttg::device::current_stream());
 
+
       send_out(std::move(out));
     }
 
+    // /* balance trees if needed by sending empty nodes to missing inputs */
+    // auto balance_trees = [&]<std::size_t I>(){
+    //   std::vector<mra::Key<NDIM>> child_keys;
+    //   for (auto child : children(key)) {
+    //     child_keys.push_back(child);
+    //   }
+      // // TODO: do we care about the key here? if so we have to send instead
+      // auto t = mra::FunctionsCompressedNode<T, NDIM>(key, N);
+      // // mark all functions as leafs
+      // t.set_all_leaf(true);
+// #ifndef MRA_ENABLE_HOST
+//       sends.push_back(ttg::device::broadcast<I>(
+//                         std::move(child_keys), std::move(t)));
+// #else
+//       ttg::broadcast<I>(std::move(child_keys), std::move(t));
+// #endif // MRA_ENABLE_HOST
+//     };
 
-    /* balance trees if needed by sending empty nodes to missing inputs */
-    auto balance_trees = [&]<std::size_t I>(){
-      std::vector<mra::Key<NDIM>> child_keys;
-      for (auto child : children(key)) {
-        child_keys.push_back(child);
-      }
-      // TODO: do we care about the key here? if so we have to send instead
-      auto t = mra::FunctionsCompressedNode<T, NDIM>(key, N);
-      // mark all functions as leafs
-      t.set_all_leaf(true);
-#ifndef MRA_ENABLE_HOST
-      sends.push_back(ttg::device::broadcast<I>(
-                        std::move(child_keys), std::move(t)));
-#else
-      ttg::broadcast<I>(std::move(child_keys), std::move(t));
-#endif // MRA_ENABLE_HOST
-    };
-
-    if (t1.is_all_leaf() && !t2.is_all_leaf()) {
-      /* broadcast an empty node for t1 to all children */
-      balance_trees.template operator()<1>();
-    } else if (!t1.is_all_leaf() && t2.is_all_leaf()) {
-      /* broadcast an empty node for t2 to all children */
-      balance_trees.template operator()<2>();
-    }
+//     if (t1.is_all_leaf() && !t2.is_all_leaf()) {
+//       /* broadcast an empty node for t1 to all children */
+//       balance_trees.template operator()<1>();
+//     } else if (!t1.is_all_leaf() && t2.is_all_leaf()) {
+//       /* broadcast an empty node for t2 to all children */
+//       balance_trees.template operator()<2>();
+//     }
 
 #ifndef MRA_ENABLE_HOST
     co_await std::move(sends);
@@ -690,13 +690,13 @@ void test(std::size_t N, std::size_t K) {
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
 
   ttg::Edge<mra::Key<NDIM>, void> project_control;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, gaxpy_result, multiply_result;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, multiply_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, gaxpy_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
   gaussians.reserve(N);
-  // T expnt = 10000.0;
+  // T expnt = 1000.0;
   for (int i = 0; i < N; ++i) {
     T expnt = 1500 + 1500*drand48();
     mra::Coordinate<T,NDIM> r;
@@ -714,7 +714,7 @@ void test(std::size_t N, std::size_t K) {
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto gaxpy = make_gaxpy(reconstruct, reconstruct_result, gaxpy_result, T(1.0), T(1.0), N, K);
+  auto gaxpy = make_gaxpy(compress_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
   auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
@@ -745,14 +745,6 @@ void test(std::size_t N, std::size_t K) {
               << (std::chrono::duration_cast<std::chrono::microseconds>(end - beg).count()) / 1000
               << std::endl;
   }
-}
-template<typename T, mra::Dimension NDIM>
-void test_ops(std::size_t N, std::size_t K){
-  auto functiondata = mra::FunctionData<T,NDIM>(K);
-  mra::Domain<NDIM> D;
-  D.set_cube(-1.0,1.0);
-
-
 }
 
 int main(int argc, char **argv) {
