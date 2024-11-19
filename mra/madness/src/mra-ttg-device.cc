@@ -512,12 +512,12 @@ auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const
 }
 
 template<typename T, mra::Dimension NDIM>
-auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedtedNode<T, NDIM>> in1,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressededNode<T, NDIM>> in2,
-              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressededNode<T, NDIM>> out,
+auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
+              ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
               const T scalarA, const T scalarB, const size_t N, const size_t K)
 {
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressededNode<T, NDIM>> S1, S2; // to balance trees
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> S1, S2; // to balance trees
 
   auto func = [N, K, scalarA, scalarB](
             const mra::Key<NDIM>& key,
@@ -591,7 +591,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedtedNode<T, NDI
 // #ifndef MRA_ENABLE_HOST
 //     co_await std::move(sends);
 // #endif // MRA_ENABLE_HOST
-//   };
+  };
 
   return ttg::make_tt<Space>(std::move(func),
                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
