@@ -15,9 +15,15 @@ else (TARGET ttg)
 
 FetchContent_Declare(
       ttg
-      GIT_REPOSITORY      https://github.com/TESSEorg/ttg.git
-      GIT_TAG             b180cac033475a7b9663514035e0f7f62decddf1
+      GIT_REPOSITORY      https://github.com/devreal/ttg.git
+      GIT_TAG             64260166a82921371e7de9dd445c0a96b2768aab
   )
+
+#FetchContent_Declare(
+#      ttg
+#      GIT_REPOSITORY      https://github.com/TESSEorg/ttg.git
+#      GIT_TAG             9f20ec02af70cd414d7454596b06270f734eb134
+#  )
 
   FetchContent_MakeAvailable(ttg)
   FetchContent_GetProperties(ttg
