@@ -60,7 +60,7 @@ namespace mra {
 
       /* check for our function */
       if ((key.level() < initial_level(f))) {
-        std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;
+        // std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;
         coeffs = T(1e7); // set to obviously bad value to detect incorrect use
         *is_leaf = false;
       }
@@ -105,7 +105,7 @@ namespace mra {
         if (is_t0) {
           *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
           if (!*is_leaf) {
-            std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
+            // std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
           }
         }
       }
