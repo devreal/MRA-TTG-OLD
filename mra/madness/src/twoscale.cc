@@ -4,7 +4,7 @@
 #include <vector>
 #include <cmath>
 
-#include "mratwoscale.h"
+#include "twoscale.h"
 
 namespace mra {
 
