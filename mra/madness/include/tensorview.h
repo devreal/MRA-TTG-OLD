@@ -271,11 +271,23 @@ namespace mra {
     }
 
     SCOPE value_type& operator[](size_type i) {
-      return m_ptr[offset(i)];
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
     }
 
-    SCOPE const_value_type& operator[](size_type i) const {
-      return m_ptr[offset(i)];
+    SCOPE const value_type& operator[](size_type i) const {
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
     }
 
     template <typename...Args>
@@ -410,13 +422,11 @@ namespace mra {
 
     /* array-style flattened access */
     SCOPE value_type& operator[](size_type i) {
-      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return m_ptr[i];
     }
 
     /* array-style flattened access */
-    SCOPE const_value_type operator[](size_type i) const {
-      if (m_ptr == nullptr) return const_value_type{};
+    SCOPE const value_type& operator[](size_type i) const {
       return m_ptr[i];
     }
 
