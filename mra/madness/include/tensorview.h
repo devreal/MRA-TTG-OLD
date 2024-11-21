@@ -48,6 +48,7 @@ namespace mra {
         }
       }
 #endif // __CUDA_ARCH__
+      SYNCTHREADS();
     }
   } // namespace detail
 
