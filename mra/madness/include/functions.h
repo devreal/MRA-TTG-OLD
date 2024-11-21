@@ -100,7 +100,7 @@ namespace mra {
     template <typename T, Dimension NDIM, typename accumulatorT>
     SCOPE void sumabssq(const TensorView<T, NDIM>& a, accumulatorT* sum) {
 #ifdef __CUDA_ARCH__
-      size_type tid = threadIdx.x + blockIdx.y + blockIdx.z;
+      size_type tid = threadIdx.x + threadIdx.y + threadIdx.z;
       accumulatorT s = 0.0;
       /* play it safe: set sum to zero before the atomic increments */
       if (tid == 0) { *sum = 0.0; }
