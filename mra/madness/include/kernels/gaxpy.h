@@ -24,9 +24,8 @@ namespace mra {
       SYNCTHREADS();
 
       /* compressed form */
-      foreach_idx(nA, [&](auto... idx) {
-        nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
-        // std::cout << "scalarA: " << scalarA << ", scalarB: " << scalarB << nR(idx...) << std::endl;
+      foreach_idx(nA, [&](size_type i) {
+        nR[i] = scalarA*nA[i] + scalarB*nB[i];
       });
 
     }

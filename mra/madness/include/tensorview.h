@@ -13,17 +13,17 @@ namespace mra {
 
   namespace detail {
     template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
-    SCOPE void foreach_idx_impl(const TensorViewT& t, Fn&& fn, Args... args)
+    SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
     {
 #ifdef __CUDA_ARCH__
       /* distribute the last three dimensions across the z, y, x dimension of the block */
       if constexpr (I == NDIM-3) {
         for (size_type i = threadIdx.z; i < t.dim(I); i += blockDim.z) {
-          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+          foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else if constexpr (I == NDIM-2) {
         for (size_type i = threadIdx.y; i < t.dim(I); i += blockDim.y) {
-          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+          foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else if constexpr (I == NDIM-1) {
         for (size_type i = threadIdx.x; i < t.dim(I); i += blockDim.x) {
@@ -32,18 +32,16 @@ namespace mra {
       } else {
         /* general index (NDIM > 3)*/
         for (size_type i = 0; i < t.dim(I); ++i) {
-          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+          foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       }
 #else  // __CUDA_ARCH__
       if constexpr (I < NDIM-1) {
         for (size_type i = 0; i < t.dim(I); ++i) {
-          foreach_idx_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
+          foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       } else {
         for (size_type i = 0; i < t.dim(I); ++i) {
-          //if constexpr (NDIM == 3) printf("foreach_idx %zu, %zu, %zu\n", args..., i);
-          //if constexpr (NDIM == 4) printf("foreach_idx %zu, %zu, %zu, %zu\n", args..., i);
           fn(args..., i);
         }
       }
@@ -52,12 +50,28 @@ namespace mra {
     }
   } // namespace detail
 
+  /* invoke fn for each NDIM index set */
+  template<class TensorViewT, typename Fn>
+  requires(TensorViewT::is_tensor())
+  SCOPE void foreach_idxs(const TensorViewT& t, Fn&& fn) {
+    constexpr mra::Dimension NDIM = TensorViewT::ndim();
+    detail::foreach_idxs_impl<NDIM, 0>(t, std::forward<Fn>(fn));
+  }
+
+  /* invoke fn for each flat index */
   template<class TensorViewT, typename Fn>
   requires(TensorViewT::is_tensor())
   SCOPE void foreach_idx(const TensorViewT& t, Fn&& fn) {
-    constexpr mra::Dimension NDIM = TensorViewT::ndim();
-    //std::cout << "foreach_idx NDIM " << NDIM << " ";
-    detail::foreach_idx_impl<NDIM, 0>(t, std::forward<Fn>(fn));
+#ifdef __CUDA_ARCH__
+    size_type tid = threadIdx.x + blockDim.x*(threadIdx.y + (blockDim.y*threadIdx.z));
+    for (size_type i = tid; i < t.size(); i += blockDim.x*blockDim.y*blockDim.z) {
+      fn(i);
+    }
+#else  // __CUDA_ARCH__
+    for (size_type i = 0; i < t.size(); ++i) {
+      fn(i);
+    }
+#endif // __CUDA_ARCH__
   }
 
   namespace detail {
@@ -245,16 +259,36 @@ namespace mra {
       return m_slices;
     }
 
+    SCOPE value_type& operator[](size_type i) {
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
+    }
+
+    SCOPE const value_type& operator[](size_type i) const {
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
+    }
+
     template <typename...Args>
     SCOPE auto& operator()(Args...args) {
-        static_assert(ndim() == sizeof...(Args), "TensorSlice number of indices must match dimension");
-        return m_ptr[offset_helper(std::index_sequence_for<Args...>{}, std::forward<Args>(args)...)];
+      static_assert(ndim() == sizeof...(Args), "TensorSlice number of indices must match dimension");
+      return m_ptr[offset_helper(std::index_sequence_for<Args...>{}, std::forward<Args>(args)...)];
     }
 
     template <typename...Args>
     SCOPE const auto& operator()(Args...args) const {
-        static_assert(ndim() == sizeof...(Args), "TensorSlice number of indices must match dimension");
-        return m_ptr[offset_helper(std::index_sequence_for<Args...>{}, std::forward<Args>(args)...)];
+      static_assert(ndim() == sizeof...(Args), "TensorSlice number of indices must match dimension");
+      return m_ptr[offset_helper(std::index_sequence_for<Args...>{}, std::forward<Args>(args)...)];
     }
 
     /// Fill with scalar
@@ -263,7 +297,7 @@ namespace mra {
     template <typename X=TensorSlice<TensorViewT>>
     typename std::enable_if<!std::is_const_v<TensorSlice>,X&>::type
     SCOPE operator=(const value_type& value) {
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) = value; });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) = value; });
       return *this;
     }
 
@@ -273,7 +307,7 @@ namespace mra {
     template <typename X=TensorSlice<TensorViewT>>
     typename std::enable_if<!std::is_const_v<TensorSlice>,X&>::type
     SCOPE operator*=(const value_type& value) {
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) *= value; });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) *= value; });
       return *this;
     }
 
@@ -282,7 +316,7 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     typename std::enable_if<!std::is_const_v<TensorViewT>,TensorSlice&>::type
     SCOPE operator=(const TensorSlice& other) {
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) = other[i]; });
       return *this;
     }
 
@@ -383,6 +417,16 @@ namespace mra {
       return s;
     }
 
+    /* array-style flattened access */
+    SCOPE value_type& operator[](size_type i) {
+      return m_ptr[i];
+    }
+
+    /* array-style flattened access */
+    SCOPE const value_type& operator[](size_type i) const {
+      return m_ptr[i];
+    }
+
     /* return the offset for the provided indexes */
     template<typename... Dims>
     requires(std::is_integral_v<Dims>&&...)
@@ -437,7 +481,7 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator=(const value_type& value) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) = value; });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) = value; });
       return *this;
     }
 
@@ -446,7 +490,7 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator*=(const value_type& value) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) *= value; });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) *= value; });
       return *this;
     }
 
@@ -465,9 +509,9 @@ namespace mra {
     SCOPE TensorView& operator=(const TensorView<T, NDIM>& other) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       if (other.m_ptr == nullptr) {
-        foreach_idx(*this, [&](auto... args){ this->operator()(args...) = 0; });
+        foreach_idx(*this, [&](size_type i){ this->operator[](i) = 0; });
       } else {
-        foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
+        foreach_idx(*this, [&](size_type i){ this->operator[](i) = other[i]; });
       }
       return *this;
     }
@@ -478,7 +522,7 @@ namespace mra {
     template<typename TensorViewT>
     SCOPE TensorView& operator=(const TensorSlice<TensorViewT>& other) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      foreach_idx(*this, [&](auto... args){ this->operator()(args...) = other(args...); });
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) = other[i]; });
       return *this;
     }
 
@@ -539,7 +583,7 @@ namespace mra {
   SCOPE TensorSlice<TensorViewT>::operator=(
     const TensorViewT& view)
   {
-    foreach_idx(*this, [&](auto... args){ this->operator()(args...) = view(args...); });
+    foreach_idx(*this, [&](size_type i){ this->operator[](i) = view[i]; });
     return *this;
   }
 

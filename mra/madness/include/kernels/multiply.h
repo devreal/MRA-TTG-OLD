@@ -53,8 +53,8 @@ namespace mra {
       transform(nB, phiT, r2, workspace);
       const T scale = std::pow(T(2), T(0.5 * NDIM * key.level())) / std::sqrt(D.template get_volume<T>());
 
-      foreach_idx(nA, [&](auto... idx) {
-          r(idx...) = scale * r1(idx...) * r2(idx...);
+      foreach_idx(nA, [&](size_type i) {
+          r[i] = scale * r1[i] * r2[i];
       });
 
       // convert back to coeffs
