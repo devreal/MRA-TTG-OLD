@@ -27,7 +27,7 @@ set(HAVE_HIP ${CMAKE_HIP_COMPILER} CACHE BOOL "True if we can compile .hip files
 # don't bother with Boost
 set(TTG_FETCH_BOOST OFF)
 set(TTG_PARSEC_USE_BOOST_SERIALIZATION OFF)
-set(TTG_EXAMPLES OFF)
+set(TTG_EXAMPLES ON) # to pull in TA
 
 # disable tests, may want to re-enable later
 set(BUILD_TESTING OFF)

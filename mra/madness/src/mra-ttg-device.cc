@@ -9,6 +9,7 @@
 #include "key.h"
 #include "domain.h"
 #include "options.h"
+#include "allocator.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
@@ -104,8 +105,7 @@ auto make_project(
 
         /* temporaries */
         /* TODO: have make_scratch allocate pinned memory for us */
-        auto is_leafs = std::make_unique_for_overwrite<bool[]>(N);
-        auto is_leafs_scratch = ttg::make_scratch(is_leafs.get(), ttg::scope::Allocate, N);
+        auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::Allocate);
         const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
@@ -116,13 +116,13 @@ auto make_project(
         /* TODO: cannot do this from a function, had to move it into the main task */
   #ifndef MRA_ENABLE_HOST
         co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
-                                    hgT.buffer(), tmp_scratch, is_leafs_scratch);
+                                    hgT.buffer(), tmp_scratch, is_leafs);
   #endif
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
-        T* tmp_ptr = tmp_scratch.device_ptr();
-        bool *is_leafs_device = is_leafs_scratch.device_ptr();
+        T* tmp_device = tmp_scratch.device_ptr();
+        bool *is_leafs_device = is_leafs.current_device_ptr();
         auto *f_ptr   = fb.current_device_ptr();
         auto& domain = *db.current_device_ptr();
         auto  gldata = gl.current_device_ptr();
@@ -134,10 +134,11 @@ auto make_project(
 
         /* wait and get is_leaf back */
   #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::wait(is_leafs_scratch);
+        co_await ttg::device::wait(is_leafs);
   #endif
+        const bool* is_leafs_arr = is_leafs.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
-          result.is_leaf(i) = is_leafs[i];
+          result.is_leaf(i) = is_leafs_arr[i];
         }
         /**
          * END FCOEFFS HERE
@@ -283,11 +284,10 @@ static auto make_compress(
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         const auto& hgT = functiondata.get_hgT();
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-        auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
-        auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
+        auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::Allocate);
   #ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
-                                        tmp_scratch, d_sumsq_scratch);
+                                        tmp_scratch, d_sumsq);
         auto select_in = [&](const auto& in) {
           if (!in.empty()) {
             input.add(in.coeffs().buffer());
@@ -322,14 +322,14 @@ static auto make_compress(
 
         /* wait for kernel and transfer sums back */
   #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::wait(d_sumsq_scratch);
+        co_await ttg::device::wait(d_sumsq);
   #endif
-
+        auto* d_sumsq_arr = d_sumsq.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
           auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
                                    in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
           auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
-          p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
+          p.sum(i) = d_sumsq_arr[i] + child_sumsq; // result sumsq is last element in sumsqs
           //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
           //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
         }
@@ -1034,10 +1034,12 @@ int main(int argc, char **argv) {
   int cores   = opt.parse("-c", -1); // -1: use all cores
 
   ttg::initialize(argc, argv, cores);
+  allocator_init(argc, argv);
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
   test_pcr<double, 3>(N, K);
 
+  allocator_fini();
   ttg::finalize();
 }

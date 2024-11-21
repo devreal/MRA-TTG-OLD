@@ -10,11 +10,13 @@
 #include <ttg/serialization/std/array.h>
 #include <madness/world/world.h>
 
+#include "allocator.h"
+
 #include "tensorview.h"
 
 namespace mra {
 
-  template<typename T, Dimension NDIM, class Allocator = std::allocator<T>>
+  template<typename T, Dimension NDIM, class Allocator = DeviceAllocator<T>>
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
