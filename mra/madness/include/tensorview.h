@@ -14,6 +14,7 @@ namespace mra {
   namespace detail {
     template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
     SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
+    SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
     {
 #ifdef __CUDA_ARCH__
       /* distribute the last three dimensions across the z, y, x dimension of the block */
@@ -271,11 +272,23 @@ namespace mra {
     }
 
     SCOPE value_type& operator[](size_type i) {
-      return m_ptr[offset(i)];
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
     }
 
-    SCOPE const_value_type& operator[](size_type i) const {
-      return m_ptr[offset(i)];
+    SCOPE const value_type& operator[](size_type i) const {
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return m_ptr[offset];
     }
 
     template <typename...Args>
@@ -409,13 +422,11 @@ namespace mra {
 
     /* array-style flattened access */
     SCOPE value_type& operator[](size_type i) {
-      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return m_ptr[i];
     }
 
     /* array-style flattened access */
-    SCOPE const_value_type operator[](size_type i) const {
-      if (m_ptr == nullptr) return const_value_type{};
+    SCOPE const value_type& operator[](size_type i) const {
       return m_ptr[i];
     }
 
