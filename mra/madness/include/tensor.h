@@ -16,7 +16,7 @@
 
 namespace mra {
 
-  template<typename T, Dimension NDIM, class Allocator = DeviceAllocator<T>>
+  template<typename T, Dimension NDIM, class Allocator = std::allocator<T>>
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
