@@ -39,6 +39,12 @@ namespace mra {
           T sum = 0.0;
           bool is_leaf = false;
           std::array<bool, Key<NDIM>::num_children()> is_child_leaf = { false };
+          template<typename Archive>
+          void serialize(Archive& ar){
+            ar & sum;
+            ar & is_leaf;
+            ar & is_child_leaf;
+          }
         };
 
         key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
