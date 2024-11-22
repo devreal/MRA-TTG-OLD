@@ -370,15 +370,13 @@ auto make_reconstruct(
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,NDIM>> S("S");  // passes scaling functions down
 
   auto do_reconstruct = [&, N, K](const mra::Key<NDIM>& key,
-                                  mra::FunctionsCompressedNode<T, NDIM>&& node,
+                                  const mra::FunctionsCompressedNode<T, NDIM>& node,
                                   const mra::FunctionsReconstructedNode<T, NDIM>& from_parent) -> TASKTYPE {
     const std::size_t tmp_size = reconstruct_tmp_size<NDIM>(K)*N;
     auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
     const auto& hg = functiondata.get_hg();
     auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
     mra::KeyChildren<NDIM> children(key);
-
-    bool node_empty = node.empty();
 
     // Send empty interior node to result tree
     auto r_empty = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
@@ -426,11 +424,6 @@ auto make_reconstruct(
 #else  // MRA_ENABLE_HOST
       return; // we're done
 #endif // MRA_ENABLE_HOST
-    } else if (node.empty()) {
-      /* parent node not empty so allocate a new compressed node */
-      //std::cout << "reconstruct " << key << " allocating previously empoty node " << std::endl;
-      node.allocate(K);
-      node.coeffs().buffer().reset_scope(ttg::scope::Allocate);
     }
 
     /* once we are here we know we need to invoke the reconstruct kernel */
@@ -448,12 +441,15 @@ auto make_reconstruct(
 #ifndef MRA_ENABLE_HOST
     // helper lambda to pick apart the std::array
     auto make_inputs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
-      return ttg::device::Input(hg.buffer(), node.coeffs().buffer(), tmp_scratch,
+      return ttg::device::Input(hg.buffer(), tmp_scratch,
                                 (r_arr[Is].coeffs().buffer())...);
     };
     auto inputs = make_inputs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     if (!from_parent.empty()) {
       inputs.add(from_parent.coeffs().buffer());
+    }
+    if (!node.empty()) {
+      inputs.add(node.coeffs().buffer());
     }
     /* select a device */
     co_await ttg::device::select(inputs);
@@ -467,7 +463,7 @@ auto make_reconstruct(
     auto node_view = node.coeffs().current_view();
     auto hg_view = hg.current_view();
     auto from_parent_view = from_parent.coeffs().current_view();
-    submit_reconstruct_kernel(key, N, K, node_view, node_empty, hg_view, from_parent_view,
+    submit_reconstruct_kernel(key, N, K, node_view, hg_view, from_parent_view,
                               r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
 
     for (auto it=children.begin(); it!=children.end(); ++it) {
@@ -500,15 +496,21 @@ auto make_reconstruct(
 static std::mutex printer_guard;
 template <typename keyT, typename valueT>
 auto make_printer(const ttg::Edge<keyT, valueT>& in, const char* str = "", const bool doprint=true) {
-  auto func = [str,doprint](const keyT& key, const valueT& value) {
-    // sanity check
-    assert(value.coeffs().buffer().is_current_on(ttg::device::Device()));
+  auto func = [str,doprint](const keyT& key, const valueT& value) -> TASKTYPE {
     if (doprint) {
+#ifndef MRA_ENABLE_HOST
+      /* pull the data back to the host */
+      co_await ttg::device::select(value.coeffs().buffer());
+      co_await ttg::device::wait(value.coeffs().buffer());
+#endif // MRA_ENABLE_HOST
+
+      // sanity check
+      assert(value.coeffs().buffer().is_current_on(ttg::device::Device()));
       std::lock_guard<std::mutex> obolus(printer_guard);
       std::cout << str << " (" << key << "," << value << ")" << std::endl;
     }
   };
-  return ttg::make_tt(func, ttg::edges(in), ttg::edges(), "printer", {"input"});
+  return ttg::make_tt<Space>(func, ttg::edges(in), ttg::edges(), "printer", {"input"});
 }
 
 template<typename T, mra::Dimension NDIM>
