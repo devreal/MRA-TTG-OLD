@@ -76,7 +76,7 @@ namespace mra {
           if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
           size_type N = m_metadata.size();
           if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
-          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
+          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, K));
         }
 
         bool has_children(size_type i) const {
