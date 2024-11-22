@@ -5,6 +5,10 @@
 #include "tensor.h"
 #include "functions.h"
 
+#include <ttg/serialization/std/vector.h>
+#include <ttg/serialization/std/array.h>
+
+
 namespace mra {
 
     namespace detail {
@@ -170,12 +174,9 @@ namespace mra {
 
         template <typename Archive>
         void serialize(Archive& ar) {
-          throw std::runtime_error("FunctionsCompressedNode::serialize not yet implemented");
-#if 0
           ar& this->m_key;
           ar& this->m_metadata;
           ar& this->m_coeffs;
-#endif // 0
         }
 
         template <typename Archive>
@@ -293,12 +294,9 @@ namespace mra {
 
         template <typename Archive>
         void serialize(Archive& ar) {
-          throw std::runtime_error("FunctionsCompressedNode::serialize not yet implemented");
-#if 0
           ar& this->m_key;
           ar& this->m_is_child_leafs;
           ar& this->m_coeffs;
-#endif // 0
         }
 
         template <typename Archive>
