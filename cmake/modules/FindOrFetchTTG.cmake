@@ -7,7 +7,13 @@ if (TARGET ttg)
 else (TARGET ttg)
 
   include(FetchContent)
-  FetchContent_Declare(
+#  FetchContent_Declare(
+#      ttg
+#      GIT_REPOSITORY      https://github.com/devreal/ttg.git
+#      GIT_TAG             6061bc5ad5172b82279a7dc090afa5f391a3fdce
+#  )
+
+FetchContent_Declare(
       ttg
       GIT_REPOSITORY      https://github.com/devreal/ttg.git
       GIT_TAG             64260166a82921371e7de9dd445c0a96b2768aab
