@@ -36,11 +36,11 @@ namespace mra {
       const T scalarA, const T scalarB,
       size_type N, size_type K, const Key<NDIM>& key)
     {
-      const size_type K2NDIM = std::pow(K, NDIM);
+      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       size_type blockid = blockIdx.x;
-      gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[K2NDIM*blockid],
-                                 nullptr == nodeB ? nullptr : &nodeB[K2NDIM*blockid],
-                                 &nodeR[K2NDIM*blockid],
+      gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[TWOK2NDIM*blockid],
+                                 nullptr == nodeB ? nullptr : &nodeB[TWOK2NDIM*blockid],
+                                 &nodeR[TWOK2NDIM*blockid],
                                  scalarA, scalarB, K);
     }
   } // namespace detail
