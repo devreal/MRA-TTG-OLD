@@ -39,6 +39,7 @@ namespace mra {
       SHARED TensorView<T, NDIM> s, workspace, tmp_node;
       SHARED TensorView<T, NDIM> node, from_parent; // TODO: make const
       SHARED TensorView<T, 2> hg;
+      SHARED T* workspace;
       if (is_t0) {
         node        = TensorView<T, NDIM>(node_ptr, 2*K);
         s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
@@ -46,6 +47,8 @@ namespace mra {
         workspace   = TensorView<T, NDIM>(&tmp_ptr[2*TWOK2NDIM], 2*K);
         hg          = TensorView<T, 2>(hg_ptr, 2*K);
         from_parent = TensorView<T, NDIM>(from_parent_ptr, K);
+        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
+        workspace   = &tmp_ptr[TWOK2NDIM];
       }
       SYNCTHREADS();
       s = 0.0;

@@ -41,10 +41,9 @@ SCOPE
 void transform(const TensorView<T, NDIM>& t,
                const TensorView<T, 2>& c,
                TensorView<T, NDIM>& result,
-               TensorView<T, NDIM>& workspace) {
-  workspace = 0.0; // set to zero
+               T* workspace) {
   const T* pc = c.data();
-  T *t0=workspace.data(), *t1=result.data();
+  T *t0=workspace, *t1=result.data();
   if (t.ndim() & 0x1) std::swap(t0,t1);
   const size_type dimj = c.dim(1);
   size_type dimi = 1;
