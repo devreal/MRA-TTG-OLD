@@ -385,17 +385,9 @@ namespace mra {
     { }
 
     SCOPE TensorView(TensorView<T, NDIM>&& other) = default;
+    SCOPE TensorView(const TensorView<T, NDIM>& other) = delete;
 
     SCOPE TensorView& operator=(TensorView<T, NDIM>&& other) = default;
-
-    /* Deep copy ctor und op are not needed for PO since tiles will never be read
-    * and written concurrently. Hence shallow copies are enough, will all
-    * receiving tasks sharing tile data. Re-enable this once the PaRSEC backend
-    * can handle data sharing without excessive copying */
-    SCOPE TensorView(const TensorView<T, NDIM>& other)
-    : m_dims(other.m_dims)
-    , m_ptr(other.m_ptr)
-    { }
 
     SCOPE size_type size() const {
       return std::reduce(&m_dims[0], &m_dims[ndim()-1], 1, std::multiplies<size_type>{});
