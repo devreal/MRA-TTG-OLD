@@ -26,11 +26,13 @@ namespace mra::detail {
 #define SYNCTHREADS() __syncthreads()
 #define DEVSCOPE __device__
 #define SHARED __shared__
+#define LAUNCH_BOUNDS(__NT) __launch_bounds__(__NT)
 #else // __CUDA_ARCH__
 #define SCOPE
 #define SYNCTHREADS() do {} while(0)
 #define DEVSCOPE inline
 #define SHARED
+#define LAUNCH_BOUNDS(__NT)
 #endif // __CUDA_ARCH__
 
 #ifdef __CUDACC__

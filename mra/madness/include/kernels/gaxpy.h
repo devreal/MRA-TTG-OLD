@@ -4,6 +4,7 @@
 #include "platform.h"
 #include "types.h"
 #include "tensorview.h"
+#include "maxk.h"
 
 namespace mra {
   namespace detail {
@@ -28,7 +29,9 @@ namespace mra {
     }
 
     template <typename T, Dimension NDIM>
-    GLOBALSCOPE void gaxpy_kernel(
+    GLOBALSCOPE
+    LAUNCH_BOUNDS(4*MRA_MAX_K*MRA_MAX_K)
+    void gaxpy_kernel(
       const T* nodeA, const T* nodeB, T* nodeR,
       const T scalarA, const T scalarB,
       size_type N, size_type K, const Key<NDIM>& key)
@@ -55,7 +58,8 @@ namespace mra {
     size_type K,
     cudaStream_t stream)
   {
-    Dim3 thread_dims = Dim3(K, K, 1);
+    size_type max_threads = std::min(2*K, 2*MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
 
     CALL_KERNEL(detail::gaxpy_kernel, N, thread_dims, 0, stream,
       (funcA.data(), funcB.data(), funcR.data(), scalarA, scalarB, N, K, key));

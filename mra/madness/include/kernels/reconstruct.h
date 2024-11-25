@@ -4,6 +4,7 @@
 
 #include "types.h"
 #include "key.h"
+#include "maxk.h"
 #include "tensorview.h"
 #include "platform.h"
 #include "kernels/child_slice.h"
@@ -71,7 +72,9 @@ namespace mra {
 
 
     template<typename T, Dimension NDIM>
-    GLOBALSCOPE void reconstruct_kernel(
+    GLOBALSCOPE void
+    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
+    reconstruct_kernel(
       Key<NDIM> key,
       size_type N,
       size_type K,
@@ -115,8 +118,8 @@ namespace mra {
     T* tmp,
     cudaStream_t stream)
   {
-    /* runs on a single block */
-    Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
     CALL_KERNEL(detail::reconstruct_kernel, N, thread_dims, 0, stream,
       (key, N, K, node.data(), node_empty, tmp, hg.data(), from_parent.data(), r_arr));
     checkSubmit();
