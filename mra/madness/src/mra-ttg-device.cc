@@ -678,8 +678,8 @@ template <typename T, Dimension NDIM>
 auto make_norm(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
                ttg::Edge<mra::Key<NDIM>, T> result){
-  auto ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> L, I; // distribute to either leaf or inner node task
-  auto ttg::Edge<mra::Key<NDIM>, T> N; // norm edge
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> L, I; // distribute to either leaf or inner node task
+  ttg::Edge<mra::Key<NDIM>, T> N; // norm edge
 
   auto leaf_fn = [N, K](const mra::Key<NDIM>& key,
                         const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
