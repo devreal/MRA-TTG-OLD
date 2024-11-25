@@ -9,6 +9,7 @@
 #include "kernels/fcube.h"
 #include "kernels/transform.h"
 #include "maxk.h"
+#include "maxk.h"
 
 namespace mra {
 
@@ -138,19 +139,14 @@ namespace mra {
       }
       SYNCTHREADS();
       /* adjust pointers for the function of each block */
-      for (size_type fnid = blockIdx.x; fnid < N; fnid += gridDim.x) {
-        if (is_team_lead()) {
-          /* get the coefficient inputs */
-          coeffs       = coeffs_view(fnid);
-        }
-        SYNCTHREADS();
-        fcoeffs_kernel_impl(D, gldata, fns[fnid], key, K, fnid,
-                            values, r0, r1, child_values, x_vec, x, workspace,
-                            phibar_view, hgT_view, coeffs,
-                            &is_leaf[fnid], thresh);
+      //size_type blockid = blockIdx.x;
+      for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
+        fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K,
+                            &tmp[(fcoeffs_tmp_size<NDIM>(K)*blockid)],
+                            phibar_ptr, coeffs_ptr+(blockid*K2NDIM),
+                            hgT_ptr, &is_leaf[blockid], thresh);
       }
     }
-
   } // namespace detail
 
   /**
