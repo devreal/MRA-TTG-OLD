@@ -32,14 +32,15 @@ namespace mra {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
       const size_type K2NDIM = std::pow(K, NDIM);
 
-      SHARED TensorView<T, NDIM> nA, nB, nR, workspace, r1, r2, r;
+      SHARED TensorView<T, NDIM> nA, nB, nR, r1, r2, r;
       SHARED TensorView<T, 2> phiT, phibar;
+      SHARED T* workspace;
 
       if (is_t0) {
         nA        = TensorView<T, NDIM>(nodeA, K);
         nB        = TensorView<T, NDIM>(nodeB, K);
         nR        = TensorView<T, NDIM>(nodeR, K);
-        workspace = TensorView<T, NDIM>(&tmp[0], K);
+        workspace = &tmp[0];
         r         = TensorView<T, NDIM>(&tmp[1*K2NDIM], K);
         r1        = TensorView<T, NDIM>(&tmp[2*K2NDIM], K);
         r2        = TensorView<T, NDIM>(&tmp[3*K2NDIM], K);
