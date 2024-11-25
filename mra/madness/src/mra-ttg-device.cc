@@ -600,8 +600,6 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
                              {"out", "S1", "S2"});
 }
 
-
-
 template<typename T, mra::Dimension NDIM>
 auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
@@ -677,7 +675,93 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 }
 
 template <typename T, Dimension NDIM>
-auto make_norm(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input)
+auto make_norm(size_type N, size_type K,
+               ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
+               ttg::Edge<mra::Key<NDIM>, T> result) {
+  auto ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> L, I; // distribute to either leaf or inner node task
+  auto ttg::Edges<mra::Key<NDIM>, T> N; // norm edge
+  auto leaf_fn = [N, K](const mra::Key<NDIM>& key,
+                        const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+    T norm;
+    auto norm_scratch = ttg::device::make_scratch(&norm, ttg::scope::Allocate);
+
+#ifndef MRA_ENABLE_HOST
+    co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
+    submit_norm_kernel(key, N, K, input.coeffs.current_view(), norm_scratch.device_ptr());
+    // wait for the norm to come back
+    co_await ttg::device::wait(norm_scratch);
+    // send norm upstream
+    co_await ttg::device::send<0>(key.parent(), std::forward(norm));
+#else
+    submit_norm_kernel(key, N, K, input.coeffs.current_view(), norm_scratch.device_ptr());
+    // send upstream
+    ttg::send<0>(key.parent(), std::forward(norm));
+#endif // MRA_ENABLE_HOST
+  };
+
+  auto inner_fn = [N, K](const mra::Key<NDIM>& key,
+                         const mra::FunctionsCompressedNode<T, NDIM>& in
+                         const T& child_norm_sum) -> TASKTYPE {
+    T norm;
+
+#ifndef MRA_ENABLE_HOST
+    auto norm_scratch = ttg::device::make_scratch(&norm, ttg::scope::Allocate);
+    co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
+    submit_norm_kernel(key, N, K, input.coeffs.current_view(), norm_scratch.device_ptr());
+    // wait for the norm to come back
+    co_await ttg::device::wait(norm_scratch);
+    T result_norm = norm + child_norm_sum;
+
+    if (key.level() == 0) {
+      // send to output
+      co_await ttg::device::send<1>(key.parent(), std::forward(result_norm));
+    } else {
+      // send upstream
+      co_await ttg::device::send<0>(key.parent(), std::forward(result_norm));
+    }
+#else  // MRA_ENABLE_HOST
+    submit_norm_kernel(key, N, K, input.coeffs.current_view(), &norm);
+    if (key.level() == 0) {
+      // send to output
+      ttg::send<1>(key.parent(), std::forward(result_norm));
+    } else {
+      // send upstream
+      ttg::send<0>(key.parent(), std::forward(result_norm));
+    }
+#endif // MRA_ENABLE_HOST
+  };
+
+  // reducer to form the sum of all children before the sum is passed into the inner_fn
+  inner_fn->set_input_reducer<1>([](T& a, const T& b`){
+    a += b;
+  }, mra::Key<NDIM>::num_children());
+
+  // task to select whether a compressed node is a leaf or not
+  auto select_fn = [](const mra::Key<NDIM>& key,
+                      const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+    if (in.is_all_child_leaf()) {
+      // send to leaf function
+      co_await ttg::device::send<0>(key, in);
+    } else {
+      // send to inner function
+      co_await ttg::device::send<1>(key, in);
+    }
+  };
+
+  /* compile everything into tasks */
+  return std::make_tuple(ttg::make_tt<Space>(std::move(leaf_fn),
+                                             ttg::edges(L),         // leaf node input
+                                             ttg::edges(N),         // norm output
+                                             "norm-leaf"),
+                         ttg::make_tt<Space>(std::move(inner_fn),
+                                             ttg::edges(I, N),      // inner node input
+                                             ttg::edges(N, result), // norm and result output
+                                             "norm-inner"),
+                         ttg::make_tt<Space>(std::move(select_norm),
+                                             ttg::edges(input),     // main input
+                                             ttg::edges(L, I),      // leaf and inner output
+                                             "norm-select"));
+}
 
 // computes from bottom up
 // task2: receive norm from children, compute on self, send send up
@@ -765,6 +849,7 @@ void test_pcr(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, multiply_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, compress_reconstruct_result, gaxpy_result;
+  ttg::Edge<mra::Key<NDIM>, T> norm_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
@@ -785,17 +870,22 @@ void test_pcr(std::size_t N, std::size_t K) {
   auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
+  // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
+  // // R(C(P))
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
-  auto compress_r = make_compress(N, K, functiondata, reconstruct_result, compress_reconstuct_result); // C(R(C(P)))
+  // C(R(C(P)))
+  auto compress_r = make_compress(N, K, functiondata, reconstruct_result, compress_reconstuct_result);
 
-  auto gaxpy = make_gaxpy(compress_result, compress_reconstruct_result, gaxpy_result, T(1.0), T(-1.0), N, K);
-  auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
-  auto printer =   make_printer(project_result,    "projected    ", false);
-  auto printer2 =  make_printer(compress_result,   "compressed   ", false);
-  auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
-  auto printer4 = make_printer(gaxpy_result, "gaxpy", false);
-  auto printer5 = make_printer(multiply_result, "multiply", false);
+  // C(R(C(P))) - C(P)
+  auto gaxpy = make_gaxpy(compress_reconstruct_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
+  // | C(R(C(P))) - C(P) |
+  auto norm  = make_norm(N, K, gaxpy_result, norm_result);
+  // final check
+  auto norm_check = ttg::make_tt([&](const mra::Key<NDIM>& key, const T& norm){
+    // TODO: check for the norm within machine precision
+    std::cout << "Final norm: " << norm << std::endl;
+  }, ttg::edges(norm_result), ttg::edges(), "norm-check");
 
   auto connected = make_graph_executable(start.get());
   assert(connected);

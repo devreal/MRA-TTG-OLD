@@ -260,6 +260,16 @@ namespace mra {
           }
         }
 
+        bool is_all_child_leaf() const {
+          bool result = true;
+          for (const auto& node : m_is_child_leafs) {
+            for (const auto& c : node) {
+              result &= c;
+            }
+          }
+          return result;
+        }
+
         auto& coeffs() {
           return m_coeffs;
         }
