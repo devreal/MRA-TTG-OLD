@@ -722,6 +722,7 @@ auto make_norm(size_type N, size_type K,
     }
 #else  // MRA_ENABLE_HOST
     submit_norm_kernel(key, N, K, in.coeffs.current_view(), &norm);
+    T result_norm = norm + child_norm_sum;
     if (key.level() == 0) {
       // send to output
       ttg::send<1>(key.parent(), std::forward(result_norm));
