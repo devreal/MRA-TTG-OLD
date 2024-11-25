@@ -678,8 +678,8 @@ template <typename T, Dimension NDIM>
 auto make_norm(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
                ttg::Edge<mra::Key<NDIM>, T> result){
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> L, I; // distribute to either leaf or inner node task
-  ttg::Edge<mra::Key<NDIM>, T> N; // norm edge
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> leaf_e, inner_e; // distribute to either leaf or inner node task
+  ttg::Edge<mra::Key<NDIM>, T> norm_e; // norm edge
 
   auto leaf_fn = [N, K](const mra::Key<NDIM>& key,
                         const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
@@ -751,16 +751,16 @@ auto make_norm(size_type N, size_type K,
 
   /* compile everything into tasks */
   return std::make_tuple(ttg::make_tt<Space>(std::move(leaf_fn),
-                                             ttg::edges(L),         // leaf node input
-                                             ttg::edges(N),         // norm output
+                                             ttg::edges(leaf_e),         // leaf node input
+                                             ttg::edges(norm_e),         // norm output
                                              "norm-leaf"),
                          ttg::make_tt<Space>(std::move(inner_fn),
-                                             ttg::edges(I, N),      // inner node input
-                                             ttg::edges(N, result), // norm and result output
+                                             ttg::edges(inner_e, norm_e),      // inner node input
+                                             ttg::edges(norm_e, result), // norm and result output
                                              "norm-inner"),
                          ttg::make_tt<Space>(std::move(select_fn),
                                              ttg::edges(input),     // main input
-                                             ttg::edges(L, I),      // leaf and inner output
+                                             ttg::edges(leaf_e, inner_e),      // leaf and inner output
                                              "norm-select"));
 }
 
