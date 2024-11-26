@@ -163,16 +163,15 @@ auto make_project(
 
 template<mra::Dimension NDIM, typename Value, std::size_t I, std::size_t... Is>
 static auto select_send_up(const mra::Key<NDIM>& key, Value&& value,
-                           std::size_t child_idx,
                            std::index_sequence<I, Is...>) {
-  if (child_idx == I) {
+  if (key.childindex() == I) {
 #ifndef MRA_ENABLE_HOST
     return ttg::device::send<I>(key.parent(), std::forward<Value>(value));
 #else
     return ttg::send<I>(key.parent(), std::forward<Value>(value));
 #endif
   } else if constexpr (sizeof...(Is) > 0){
-    return select_send_up(key, std::forward<Value>(value), child_idx, std::index_sequence<Is...>{});
+    return select_send_up(key, std::forward<Value>(value), std::index_sequence<Is...>{});
   }
   /* if we get here we messed up */
   throw std::runtime_error("Mismatching number of children!");
@@ -186,9 +185,9 @@ static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::Functions
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.any_have_children()) {
 #ifndef MRA_ENABLE_HOST
-    co_await select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
-    select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
   }
 }
@@ -334,11 +333,11 @@ static auto make_compress(
         co_await ttg::device::forward(
           // select to which child of our parent we send
           //ttg::device::send<0>(key, std::move(p)),
-          select_send_up(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{}),
+          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}),
           // Send result to output tree
           ttg::device::send<out_terminal_id>(key, std::move(result)));
 #else
-          select_send_up(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{});
+          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{});
           ttg::send<out_terminal_id>(key, std::move(result));
 #endif
       } else {
@@ -681,9 +680,9 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 template<typename T, mra::Dimension NDIM>
 static TASKTYPE send_norms_up(const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& node) {
 #ifndef MRA_ENABLE_HOST
-  co_await select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+  co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
-  select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+  select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
 }
 
@@ -734,7 +733,7 @@ auto make_norm(size_type N, size_type K,
       co_await ttg::device::send<num_children>(key, std::move(norms_result));
     } else {
       // send norms upstream
-      co_await select_send_up(key, std::move(norms_result), key.childindex(), std::make_index_sequence<num_children>{});
+      co_await select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{});
     }
 #else
     if (key.level() == 0) {
@@ -742,7 +741,7 @@ auto make_norm(size_type N, size_type K,
       ttg::send<num_children>(key, std::move(norms_result));
     } else {
       // send norms upstream
-      select_send_up(key, std::move(norms_result), c, std::make_index_sequence<num_children>{});
+      select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{});
     }
 #endif // MRA_ENABLE_HOST
   };
@@ -761,18 +760,18 @@ auto make_norm(size_type N, size_type K,
                     const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
     auto sends = ttg::device::forward(ttg::device::send<num_children>(key, in));
     /* feed empty tensor to all */
-    for (int c = 0; c < num_children; ++c) {
+    for (auto child : children(key)) {
       bool is_all_leaf = true;
       for (size_type i = 0; i < N; ++i) {
-        is_all_leaf &= in.is_child_leaf(i, c);
+        is_all_leaf &= in.is_child_leaf(i, child.childindex());
       }
       if (is_all_leaf) {
         /* pass up an null tensor
          * TODO: move up an empty tensor once that is possible */
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(select_send_up(key, empty_norms, c, std::make_index_sequence<num_children>{}));
+        sends.push_back(select_send_up(child, empty_norms, std::make_index_sequence<num_children>{}));
 #else  // MRA_ENABLE_HOST
-        select_send_up(key, mra::Tensor<T, 1>(N), c, std::make_index_sequence<num_children>{});
+        select_send_up(child, mra::Tensor<T, 1>(N), std::make_index_sequence<num_children>{});
 #endif // MRA_ENABLE_HOST
       } else {
         /* if not all children are leafs the norm task will receive norms from somewhere
