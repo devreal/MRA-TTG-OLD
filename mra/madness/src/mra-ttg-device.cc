@@ -688,15 +688,19 @@ auto make_norm(size_type N, size_type K,
 
 #ifndef MRA_ENABLE_HOST
     co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
-    submit_norm_kernel(key, N, K, in.coeffs.current_view(), norm_scratch.device_ptr());
+    auto node_view = in.coeffs().current_view();
+    auto norm_ptr = norm_scratch.device_ptr();
+    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
     // wait for the norm to come back
     co_await ttg::device::wait(norm_scratch);
     // send norm upstream
-    co_await ttg::device::send<0>(key.parent(), std::forward(norm));
+    co_await ttg::device::send<0>(key.parent(), std::forward<T>(norm));
 #else
-    submit_norm_kernel(key, N, K, in.coeffs.current_view(), norm_scratch.device_ptr());
+    auto node_view = in.coeffs().current_view();
+    auto norm_ptr = norm_scratch.device_ptr();
+    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
     // send upstream
-    ttg::send<0>(key.parent(), std::forward(norm));
+    ttg::send<0>(key.parent(), std::forward<T>(norm));
 #endif // MRA_ENABLE_HOST
   };
 
@@ -708,33 +712,36 @@ auto make_norm(size_type N, size_type K,
 #ifndef MRA_ENABLE_HOST
     auto norm_scratch = ttg::device::make_scratch(&norm, ttg::scope::Allocate);
     co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
-    submit_norm_kernel(key, N, K, in.coeffs.current_view(), norm_scratch.device_ptr());
+    auto node_view = in.coeffs().current_view();
+    auto norm_ptr = norm_scratch.device_ptr();
+    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
     // wait for the norm to come back
     co_await ttg::device::wait(norm_scratch);
     T result_norm = norm + child_norm_sum;
 
     if (key.level() == 0) {
       // send to output
-      co_await ttg::device::send<1>(key.parent(), std::forward(result_norm));
+      co_await ttg::device::send<1>(key.parent(), std::forward<T>(result_norm));
     } else {
       // send upstream
-      co_await ttg::device::send<0>(key.parent(), std::forward(result_norm));
+      co_await ttg::device::send<0>(key.parent(), std::forward<T>(result_norm));
     }
 #else  // MRA_ENABLE_HOST
-    submit_norm_kernel(key, N, K, in.coeffs.current_view(), &norm);
+    auto node_view = in.coeffs().current_view();
+    submit_norm_kernel(key, N, K, node_view, &norm, ttg::device::current_stream());
     T result_norm = norm + child_norm_sum;
     if (key.level() == 0) {
       // send to output
-      ttg::send<1>(key.parent(), std::forward(result_norm));
+      ttg::send<1>(key.parent(), std::forward<T>(result_norm));
     } else {
       // send upstream
-      ttg::send<0>(key.parent(), std::forward(result_norm));
+      ttg::send<0>(key.parent(), std::forward<T>(result_norm));
     }
 #endif // MRA_ENABLE_HOST
   };
 
   // reducer to form the sum of all children before the sum is passed into the inner_fn
-  inner_fn->set_input_reducer<1>([](T& a, const T& b){
+  inner_fn.set_input_reducer<1>([](T& a, const T& b){
     a += b;
   }, mra::Key<NDIM>::num_children());
 
@@ -918,7 +925,8 @@ int main(int argc, char **argv) {
   ttg::initialize(argc, argv);
   mra::GLinitialize();
 
-  test<double, 3>(1, 10);
+  // test<double, 3>(1, 10);
+  test_pcr<double, 3>(1, 10);
 
   ttg::finalize();
 }
