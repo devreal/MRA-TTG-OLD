@@ -11,5 +11,6 @@
 #include "kernels/gaxpy.h"
 #include "kernels/reconstruct.h"
 #include "kernels/multiply.h"
+#include "kernels/norm.h"
 
 #endif // HAVE_KERNELS_H

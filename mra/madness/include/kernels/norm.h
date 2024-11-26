@@ -48,8 +48,8 @@ namespace mra {
     const Key<NDIM>& key,
     size_type N,
     size_type K,
-    const TensorView<T, NDIM>& in,
-    const T norm,
+    const TensorView<T, NDIM+1>& in,
+    const T* norm,
     cudaStream_t stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);
