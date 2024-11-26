@@ -681,6 +681,9 @@ auto make_norm(size_type N, size_type K,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> leaf_e, inner_e; // distribute to either leaf or inner node task
   ttg::Edge<mra::Key<NDIM>, T> norm_e; // norm edge
 
+  /**
+   * Leaf-node tasks take no norm from children
+   */
   auto leaf_fn = [N, K](const mra::Key<NDIM>& key,
                         const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
     T norm;
@@ -704,6 +707,14 @@ auto make_norm(size_type N, size_type K,
 #endif // MRA_ENABLE_HOST
   };
 
+  auto leaf_tt = ttg::make_tt<Space>(std::move(leaf_fn),
+                                     ttg::edges(leaf_e),         // leaf node input
+                                     ttg::edges(norm_e),         // norm output
+                                     "norm-leaf"),
+
+  /**
+   * Inner node tasks take norms from children.
+   */
   auto inner_fn = [N, K](const mra::Key<NDIM>& key,
                          const mra::FunctionsCompressedNode<T, NDIM>& in,
                          const T& child_norm_sum) -> TASKTYPE {
@@ -740,12 +751,19 @@ auto make_norm(size_type N, size_type K,
 #endif // MRA_ENABLE_HOST
   };
 
+  auto inner_tt = ttg::make_tt<Space>(std::move(inner_fn),
+                                      ttg::edges(inner_e, norm_e),      // inner node input
+                                      ttg::edges(norm_e, result), // norm and result output
+                                      "norm-inner"),
+
   // reducer to form the sum of all children before the sum is passed into the inner_fn
-  inner_fn.set_input_reducer<1>([](T& a, const T& b){
+  inner_tt->set_input_reducer<1>([](T& a, const T& b){
     a += b;
   }, mra::Key<NDIM>::num_children());
 
-  // task to select whether a compressed node is a leaf or not
+  /**
+   * Task to select whether a node is leaf or inner and forward accordingly
+   */
   auto select_fn = [](const mra::Key<NDIM>& key,
                       const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
     if (in.is_all_child_leaf()) {
@@ -757,19 +775,15 @@ auto make_norm(size_type N, size_type K,
     }
   };
 
+  auto select_tt = ttg::make_tt<Space>(std::move(select_fn),
+                                        ttg::edges(input),     // main input
+                                        ttg::edges(leaf_e, inner_e),      // leaf and inner output
+                                        "norm-select");
+
   /* compile everything into tasks */
-  return std::make_tuple(ttg::make_tt<Space>(std::move(leaf_fn),
-                                             ttg::edges(leaf_e),         // leaf node input
-                                             ttg::edges(norm_e),         // norm output
-                                             "norm-leaf"),
-                         ttg::make_tt<Space>(std::move(inner_fn),
-                                             ttg::edges(inner_e, norm_e),      // inner node input
-                                             ttg::edges(norm_e, result), // norm and result output
-                                             "norm-inner"),
-                         ttg::make_tt<Space>(std::move(select_fn),
-                                             ttg::edges(input),     // main input
-                                             ttg::edges(leaf_e, inner_e),      // leaf and inner output
-                                             "norm-select"));
+  return std::make_tuple(std::move(leaf_tt),
+                         std::move(inner_tt),
+                         std::move(select_tt));
 }
 
 // computes from bottom up
