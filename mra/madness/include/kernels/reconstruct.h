@@ -13,8 +13,8 @@ namespace mra {
 
   template<mra::Dimension NDIM>
   SCOPE size_type reconstruct_tmp_size(size_type K) {
-    const size_type TWOK2NDIM = std::pow(2*K,NDIM); // s & workspace
-    return 2*TWOK2NDIM;
+    const size_type TWOK2NDIM = std::pow(2*K,NDIM);
+    return 3*TWOK2NDIM; // s, tmp_node & workspace
   }
 
   namespace detail {
@@ -28,7 +28,6 @@ namespace mra {
       Key<NDIM> key,
       size_type K,
       T* node_ptr,
-      bool node_empty,
       T* tmp_ptr,
       const T* hg_ptr,
       const T* from_parent_ptr,
@@ -36,28 +35,26 @@ namespace mra {
     {
       const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
-      SHARED TensorView<T, NDIM> node, s, workspace, from_parent;
+      SHARED TensorView<T, NDIM> s, workspace, tmp_node;
+      SHARED TensorView<T, NDIM> node, from_parent; // TODO: make const
       SHARED TensorView<T, 2> hg;
       if (is_t0) {
         node        = TensorView<T, NDIM>(node_ptr, 2*K);
         s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
-        workspace   = TensorView<T, NDIM>(&tmp_ptr[TWOK2NDIM], 2*K);
+        tmp_node    = TensorView<T, NDIM>(&tmp_ptr[1*TWOK2NDIM], 2*K);
+        workspace   = TensorView<T, NDIM>(&tmp_ptr[2*TWOK2NDIM], 2*K);
         hg          = TensorView<T, 2>(hg_ptr, 2*K);
         from_parent = TensorView<T, NDIM>(from_parent_ptr, K);
       }
       SYNCTHREADS();
       s = 0.0;
 
-      if (node_empty) {
-        /* if the node was empty we reset it to zero */
-        node = 0.0;
-      }
-
+      tmp_node = node;
       auto child_slice = get_child_slice<NDIM>(key, K, 0);
-      if (key.level() != 0) node(child_slice) = from_parent;
+      if (key.level() != 0) tmp_node(child_slice) = from_parent;
 
       //unfilter<T,K,NDIM>(node.get().coeffs, s);
-      transform<NDIM>(node, hg, s, workspace);
+      transform<NDIM>(tmp_node, hg, s, workspace);
 
       /* extract all r from s
       * NOTE: we could do this on 1<<NDIM blocks but the benefits would likely be small */
@@ -76,7 +73,6 @@ namespace mra {
       size_type N,
       size_type K,
       T* node_ptr,
-      bool node_empty,
       T* tmp_ptr,
       const T* hg_ptr,
       const T* from_parent_ptr,
@@ -95,7 +91,7 @@ namespace mra {
         }
       }
       /* no need to sync threads here, the impl will sync before the r_arr are used */
-      reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid], node_empty,
+      reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid],
                               tmp_ptr + blockid*reconstruct_tmp_size<NDIM>(K),
                               hg_ptr, &from_parent_ptr[K2NDIM*blockid],
                               block_r_arr);
@@ -108,7 +104,6 @@ namespace mra {
     size_type N,
     size_type K,
     TensorView<T, NDIM+1>& node,
-    bool node_empty,
     const TensorView<T, 2>& hg,
     const TensorView<T, NDIM+1>& from_parent,
     const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
@@ -118,7 +113,7 @@ namespace mra {
     /* runs on a single block */
     Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
     CALL_KERNEL(detail::reconstruct_kernel, N, thread_dims, 0, stream,
-      (key, N, K, node.data(), node_empty, tmp, hg.data(), from_parent.data(), r_arr));
+      (key, N, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
     checkSubmit();
   }
 
