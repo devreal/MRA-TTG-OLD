@@ -534,11 +534,18 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 
     if (t1.empty() && t2.empty()) {
       /* send out an empty result */
-      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N); // out -> result
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(); // out -> result
       send_out(std::move(out));
+    } else if (t1.empty()) {
+      // just send t2
+      send_out(t2);
+    } else if (t2.empty()) {
+      // just send t1
+      send_out(t1);
     } else {
 
       auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+      out.coeffs().buffer().reset_scope(ttg::scope::Allocate);
 
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer());
