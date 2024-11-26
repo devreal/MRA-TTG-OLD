@@ -162,9 +162,9 @@ auto make_project(
 }
 
 template<mra::Dimension NDIM, typename Value, std::size_t I, std::size_t... Is>
-static auto select_compress_send(const mra::Key<NDIM>& key, Value&& value,
-                                 std::size_t child_idx,
-                                 std::index_sequence<I, Is...>) {
+static auto select_send_up(const mra::Key<NDIM>& key, Value&& value,
+                           std::size_t child_idx,
+                           std::index_sequence<I, Is...>) {
   if (child_idx == I) {
 #ifndef MRA_ENABLE_HOST
     return ttg::device::send<I>(key.parent(), std::forward<Value>(value));
@@ -172,7 +172,7 @@ static auto select_compress_send(const mra::Key<NDIM>& key, Value&& value,
     return ttg::send<I>(key.parent(), std::forward<Value>(value));
 #endif
   } else if constexpr (sizeof...(Is) > 0){
-    return select_compress_send(key, std::forward<Value>(value), child_idx, std::index_sequence<Is...>{});
+    return select_send_up(key, std::forward<Value>(value), child_idx, std::index_sequence<Is...>{});
   }
   /* if we get here we messed up */
   throw std::runtime_error("Mismatching number of children!");
@@ -186,9 +186,9 @@ static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::Functions
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.any_have_children()) {
 #ifndef MRA_ENABLE_HOST
-    co_await select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    co_await select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #else
-    select_compress_send(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 #endif
   }
 }
@@ -334,11 +334,11 @@ static auto make_compress(
         co_await ttg::device::forward(
           // select to which child of our parent we send
           //ttg::device::send<0>(key, std::move(p)),
-          select_compress_send(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{}),
+          select_send_up(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{}),
           // Send result to output tree
           ttg::device::send<out_terminal_id>(key, std::move(result)));
 #else
-          select_compress_send(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{});
+          select_send_up(key, std::move(p), key.childindex(), std::make_index_sequence<num_children>{});
           ttg::send<out_terminal_id>(key, std::move(result));
 #endif
       } else {
@@ -674,116 +674,124 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
                              {"out", "S1", "S2"});
 }
 
+
+/* forward a reconstructed function node to the right input of do_compress
+ * this is a device task to prevent data from being pulled back to the host
+ * even though it will not actually perform any computation */
+template<typename T, mra::Dimension NDIM>
+static TASKTYPE send_norms_up(const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& node) {
+#ifndef MRA_ENABLE_HOST
+  co_await select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+#else
+  select_send_up(key, node, key.childindex(), std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+#endif
+}
+
+
 template <typename T, Dimension NDIM>
 auto make_norm(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
-               ttg::Edge<mra::Key<NDIM>, T> result){
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> leaf_e, inner_e; // distribute to either leaf or inner node task
-  ttg::Edge<mra::Key<NDIM>, T> norm_e; // norm edge
+               ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result){
+  static_assert(NDIM == 3); // TODO: worth fixing?
+  using norm_tensor_type = mra::Tensor<T, 1>;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> node_e;
+  ttg::Edge<mra::Key<NDIM>, norm_tensor_type> norm_e0, norm_e1, norm_e2, norm_e3, norm_e4, norm_e5, norm_e6, norm_e7;
+  static constexpr const int num_children = mra::Key<NDIM>::num_children();
 
   /**
-   * Leaf-node tasks take no norm from children
+   * Takes a tensor of norms from each child
    */
-  auto leaf_fn = [N, K](const mra::Key<NDIM>& key,
+  auto norm_fn = [N, K](const mra::Key<NDIM>& key,
+                        const norm_tensor_type& norm0,
+                        const norm_tensor_type& norm1,
+                        const norm_tensor_type& norm2,
+                        const norm_tensor_type& norm3,
+                        const norm_tensor_type& norm4,
+                        const norm_tensor_type& norm5,
+                        const norm_tensor_type& norm6,
+                        const norm_tensor_type& norm7,
                         const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
-    T norm;
-    auto norm_scratch = ttg::make_scratch(&norm, ttg::scope::Allocate);
+    // TODO: pass ttg::scope::Allocate once that's possible
+    // TODO: reuse of one of the input norms?
+    auto norms_result = norm_tensor_type(N);
+#ifndef MRA_ENABLE_HOST
+    co_await ttg::device::select(norms_result.buffer(), in.coeffs().buffer(),
+                                 norm0.buffer(), norm1.buffer(), norm2.buffer(), norm3.buffer(),
+                                 norm4.buffer(), norm5.buffer(), norm6.buffer(), norm7.buffer());
+#endif // MRA_ENABLE_HOST
+    auto node_view = in.coeffs().current_view();
+    auto norm_result_view = norms_result.current_view();
+    std::array<const T*, mra::Key<NDIM>::num_children()> child_norms =
+        {norm0.buffer().current_device_ptr(), norm1.buffer().current_device_ptr(),
+         norm2.buffer().current_device_ptr(), norm3.buffer().current_device_ptr(),
+         norm4.buffer().current_device_ptr(), norm5.buffer().current_device_ptr(),
+         norm6.buffer().current_device_ptr(), norm7.buffer().current_device_ptr()};
+    submit_norm_kernel(key, N, K, node_view, norm_result_view, child_norms, ttg::device::current_stream());
 
 #ifndef MRA_ENABLE_HOST
-    co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
-    auto node_view = in.coeffs().current_view();
-    auto norm_ptr = norm_scratch.device_ptr();
-    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
-    // wait for the norm to come back
-    co_await ttg::device::wait(norm_scratch);
-    // send norm upstream
-    co_await ttg::device::send<0>(key.parent(), std::forward<T>(norm));
+    if (key.level() == 0) {
+      // send to result
+      co_await ttg::device::send<num_children>(key, std::move(norms_result));
+    } else {
+      // send norms upstream
+      co_await select_send_up(key, std::move(norms_result), key.childindex(), std::make_index_sequence<num_children>{});
+    }
 #else
-    auto node_view = in.coeffs().current_view();
-    auto norm_ptr = norm_scratch.device_ptr();
-    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
-    // send upstream
-    ttg::send<0>(key.parent(), std::forward<T>(norm));
+    if (key.level() == 0) {
+      // send to result
+      ttg::send<num_children>(key, std::move(norms_result));
+    } else {
+      // send norms upstream
+      select_send_up(key, std::move(norms_result), c, std::make_index_sequence<num_children>{});
+    }
 #endif // MRA_ENABLE_HOST
   };
 
-  auto leaf_tt = ttg::make_tt<Space>(std::move(leaf_fn),
-                                     ttg::edges(leaf_e),         // leaf node input
-                                     ttg::edges(norm_e),         // norm output
-                                     "norm-leaf"),
+  auto norm_tt = ttg::make_tt<Space>(std::move(norm_fn),
+                                     ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3, norm_e4, norm_e5, norm_e6, norm_e7, node_e),
+                                     ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3, norm_e4, norm_e5, norm_e6, norm_e7, result),
+                                     "norm-task");
 
   /**
-   * Inner node tasks take norms from children.
+   * Task to dispatch incoming compressed nodes and forward empty
+   * nodes for children that do not exist
    */
-  auto inner_fn = [N, K](const mra::Key<NDIM>& key,
-                         const mra::FunctionsCompressedNode<T, NDIM>& in,
-                         const T& child_norm_sum) -> TASKTYPE {
-    T norm;
-
+  auto dispatch_fn = [N, K, empty_norms = mra::Tensor<T, 1>()]
+                   (const mra::Key<NDIM>& key,
+                    const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+    auto sends = ttg::device::forward(ttg::device::send<num_children>(key, in));
+    /* feed empty tensor to all */
+    for (int c = 0; c < num_children; ++c) {
+      bool is_all_leaf = true;
+      for (size_type i = 0; i < N; ++i) {
+        is_all_leaf &= in.is_child_leaf(i, c);
+      }
+      if (is_all_leaf) {
+        /* pass up an null tensor
+         * TODO: move up an empty tensor once that is possible */
 #ifndef MRA_ENABLE_HOST
-    auto norm_scratch = ttg::device::make_scratch(&norm, ttg::scope::Allocate);
-    co_await ttg::device::select(norm_scratch, in.coeffs().buffer());
-    auto node_view = in.coeffs().current_view();
-    auto norm_ptr = norm_scratch.device_ptr();
-    submit_norm_kernel(key, N, K, node_view, norm_ptr, ttg::device::current_stream());
-    // wait for the norm to come back
-    co_await ttg::device::wait(norm_scratch);
-    T result_norm = norm + child_norm_sum;
-
-    if (key.level() == 0) {
-      // send to output
-      co_await ttg::device::send<1>(key.parent(), std::forward<T>(result_norm));
-    } else {
-      // send upstream
-      co_await ttg::device::send<0>(key.parent(), std::forward<T>(result_norm));
-    }
+        sends.push_back(select_send_up(key, empty_norms, c, std::make_index_sequence<num_children>{}));
 #else  // MRA_ENABLE_HOST
-    auto node_view = in.coeffs().current_view();
-    submit_norm_kernel(key, N, K, node_view, &norm, ttg::device::current_stream());
-    T result_norm = norm + child_norm_sum;
-    if (key.level() == 0) {
-      // send to output
-      ttg::send<1>(key.parent(), std::forward<T>(result_norm));
-    } else {
-      // send upstream
-      ttg::send<0>(key.parent(), std::forward<T>(result_norm));
+        select_send_up(key, mra::Tensor<T, 1>(N), c, std::make_index_sequence<num_children>{});
+#endif // MRA_ENABLE_HOST
+      } else {
+        /* if not all children are leafs the norm task will receive norms from somewhere
+         * so there is nothing to be done here */
+      }
     }
+#ifndef MRA_ENABLE_HOST
+    co_await std::move(sends);
 #endif // MRA_ENABLE_HOST
   };
 
-  auto inner_tt = ttg::make_tt<Space>(std::move(inner_fn),
-                                      ttg::edges(inner_e, norm_e),      // inner node input
-                                      ttg::edges(norm_e, result), // norm and result output
-                                      "norm-inner"),
-
-  // reducer to form the sum of all children before the sum is passed into the inner_fn
-  inner_tt->set_input_reducer<1>([](T& a, const T& b){
-    a += b;
-  }, mra::Key<NDIM>::num_children());
-
-  /**
-   * Task to select whether a node is leaf or inner and forward accordingly
-   */
-  auto select_fn = [](const mra::Key<NDIM>& key,
-                      const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
-    if (in.is_all_child_leaf()) {
-      // send to leaf function
-      co_await ttg::device::send<0>(key, in);
-    } else {
-      // send to inner function
-      co_await ttg::device::send<1>(key, in);
-    }
-  };
-
-  auto select_tt = ttg::make_tt<Space>(std::move(select_fn),
-                                        ttg::edges(input),     // main input
-                                        ttg::edges(leaf_e, inner_e),      // leaf and inner output
-                                        "norm-select");
-
+  auto dispatch_tt = ttg::make_tt<Space>(std::move(dispatch_fn),
+                                         ttg::edges(input),     // main input
+                                         ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3,
+                                                    norm_e4, norm_e5, norm_e6, norm_e7, node_e),
+                                         "norm-dispatch");
   /* compile everything into tasks */
-  return std::make_tuple(std::move(leaf_tt),
-                         std::move(inner_tt),
-                         std::move(select_tt));
+  return std::make_tuple(std::move(norm_tt),
+                         std::move(dispatch_tt));
 }
 
 // computes from bottom up
@@ -872,7 +880,7 @@ void test_pcr(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, multiply_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, compress_reconstruct_result, gaxpy_result;
-  ttg::Edge<mra::Key<NDIM>, T> norm_result;
+  ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> norm_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
@@ -905,9 +913,12 @@ void test_pcr(std::size_t N, std::size_t K) {
   // | C(R(C(P))) - C(P) |
   auto norm  = make_norm(N, K, gaxpy_result, norm_result);
   // final check
-  auto norm_check = ttg::make_tt([&](const mra::Key<NDIM>& key, const T& norm){
+  auto norm_check = ttg::make_tt([&](const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& norms){
     // TODO: check for the norm within machine precision
-    std::cout << "Final norm: " << norm << std::endl;
+    auto norms_arr = norms.buffer().current_device_ptr();
+    for (size_type i = 0; i < N; ++i) {
+      std::cout << "Final norm " << i << ": " << norms_arr[i] << std::endl;
+    }
   }, ttg::edges(norm_result), ttg::edges(), "norm-check");
 
   auto connected = make_graph_executable(start.get());

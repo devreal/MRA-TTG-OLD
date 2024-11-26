@@ -10,7 +10,11 @@ namespace mra {
   namespace detail {
     template <typename T, Dimension NDIM>
     DEVSCOPE void norm_kernel_impl(
-      const T* node, T* norm, size_type K)
+      const T* node,
+      T* result_norms,
+      std::array<const T*, Key<NDIM>::num_children()>& child_norms,
+      size_type blockid,
+      size_type K)
     {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
       SHARED TensorView<T, NDIM> n;
@@ -18,27 +22,30 @@ namespace mra {
         n = TensorView<T, NDIM>(node, K);
       }
       SYNCTHREADS();
-
-      /* compressed form */
-      T sum = 0.0;
-      foreach_idx(n, [&](auto... idx) {
-        sum += n(idx...)*n(idx...);
-      });
-
-      sum = std::sqrt(sum);
-      *norm = sum;
+      T norm = normf(n);
+      if (is_t0) {
+        /* thread 0 adds the child norms and publishes the result */
+        for (int i = 0; i < Key<NDIM>::num_children(); ++i) {
+          norm += (child_norms[i] != nullptr) ? child_norms[i][blockid] : T(0.0);
+        }
+        result_norms[blockid] = norm;
+      }
     }
 
     template <typename T, Dimension NDIM>
     GLOBALSCOPE void norm_kernel(
-      const T* node, T* norm,
-      size_type N, size_type K, const Key<NDIM>& key)
+      const T* node,
+      T* result_norms,
+      std::array<const T*, Key<NDIM>::num_children()>& child_norms,
+      size_type N,
+      size_type K,
+      const Key<NDIM>& key)
     {
       const size_type K2NDIM = std::pow(K, NDIM);
-      size_type blockid = blockIdx.x;
-      norm_kernel_impl<T, NDIM>(nullptr == node ? nullptr : &node[K2NDIM*blockid],
-                                &norm[blockid],
-                                K);
+      for (size_type blockid = blockIdx.x; blockid < N; blockid += blockDim.x) {
+        norm_kernel_impl<T, NDIM>(nullptr == node ? nullptr : &node[K2NDIM*blockid],
+                                  result_norms, child_norms, blockid, K);
+      }
     }
   } // namespace detail
 
@@ -49,13 +56,14 @@ namespace mra {
     size_type N,
     size_type K,
     const TensorView<T, NDIM+1>& in,
-    const T* norm,
+    TensorView<T, 1>& result_norms,
+    std::array<const T*, Key<NDIM>::num_children()>& child_norms,
     cudaStream_t stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(detail::norm_kernel, N, thread_dims, 0, stream,
-        (in.data(), norm, N, K, key));
+        (in.data(), result_norms.data(), child_norms, N, K, key));
     checkSubmit();
   }
 
