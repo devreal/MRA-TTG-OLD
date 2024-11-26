@@ -561,35 +561,35 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
     }
 
 
-//     /* balance trees if needed by sending empty nodes to missing inputs */
-//     auto balance_trees = [&]<std::size_t I>(){
-//       std::vector<mra::Key<NDIM>> child_keys;
-//       for (auto child : children(key)) {
-//         child_keys.push_back(child);
-//       }
-//       // TODO: do we care about the key here? if so we have to send instead
-//       auto t = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
-//       // mark all functions as leafs
-//       t.set_all_leaf(true);
-// #ifndef MRA_ENABLE_HOST
-//       sends.push_back(ttg::device::broadcast<I>(
-//                         std::move(child_keys), std::move(t)));
-// #else
-//       ttg::broadcast<I>(std::move(child_keys), std::move(t));
-// #endif // MRA_ENABLE_HOST
-//     };
+    /* balance trees if needed by sending empty nodes to missing inputs */
+    auto balance_trees = [&]<std::size_t I>(){
+      std::vector<mra::Key<NDIM>> child_keys;
+      for (auto child : children(key)) {
+        child_keys.push_back(child);
+      }
+      // send empty node
+      auto t = mra::FunctionsCompressedNode<T, NDIM>();
+      // mark all functions as leafs
+      t.set_all_child_leafs(true);
+#ifndef MRA_ENABLE_HOST
+      sends.push_back(ttg::device::broadcast<I>(
+                        std::move(child_keys), std::move(t)));
+#else
+      ttg::broadcast<I>(std::move(child_keys), std::move(t));
+#endif // MRA_ENABLE_HOST
+    };
 
-//     if (t1.is_all_leaf() && !t2.is_all_leaf()) {
-//       /* broadcast an empty node for t1 to all children */
-//       balance_trees.template operator()<1>();
-//     } else if (!t1.is_all_leaf() && t2.is_all_leaf()) {
-//       /* broadcast an empty node for t2 to all children */
-//       balance_trees.template operator()<2>();
-//     }
+    if (t1.is_all_child_leaf() && !t2.is_all_child_leaf()) {
+      /* broadcast an empty node for t1 to all children */
+      balance_trees.template operator()<1>();
+    } else if (!t1.is_all_child_leaf() && t2.is_all_child_leaf()) {
+      /* broadcast an empty node for t2 to all children */
+      balance_trees.template operator()<2>();
+    }
 
-// #ifndef MRA_ENABLE_HOST
-//     co_await std::move(sends);
-// #endif // MRA_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
+     co_await std::move(sends);
+#endif // MRA_ENABLE_HOST
   };
 
   return ttg::make_tt<Space>(std::move(func),

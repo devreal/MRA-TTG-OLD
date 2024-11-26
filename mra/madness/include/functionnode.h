@@ -252,10 +252,10 @@ namespace mra {
           return m_is_child_leafs[i][child];
         }
 
-        void set_all_child_leafs() {
+        void set_all_child_leafs(bool arg = true) {
           for (auto& node : m_is_child_leafs) {
             for (auto& c : node) {
-              c = true;
+              c = arg;
             }
           }
         }
