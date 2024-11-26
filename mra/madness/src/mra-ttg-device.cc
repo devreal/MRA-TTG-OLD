@@ -764,10 +764,14 @@ auto make_norm(size_type N, size_type K,
    * Task to dispatch incoming compressed nodes and forward empty
    * nodes for children that do not exist
    */
-  auto dispatch_fn = [N, K, empty_norms = mra::Tensor<T, 1>()]
+  auto dispatch_fn = [N, K]
                    (const mra::Key<NDIM>& key,
                     const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(ttg::device::send<num_children>(key, in));
+#else  // MRA_ENABLE_HOST
+    ttg::send<num_children>(key, in);
+#endif // MRA_ENABLE_HOST
     /* feed empty tensor to all */
     for (auto child : children(key)) {
       bool is_all_leaf = true;
@@ -775,12 +779,11 @@ auto make_norm(size_type N, size_type K,
         is_all_leaf &= in.is_child_leaf(i, child.childindex());
       }
       if (is_all_leaf) {
-        /* pass up an null tensor
-         * TODO: move up an empty tensor once that is possible */
+        // pass up a null tensor
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(select_send_up(child, empty_norms, std::make_index_sequence<num_children>{}));
+        sends.push_back(select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{}));
 #else  // MRA_ENABLE_HOST
-        select_send_up(child, mra::Tensor<T, 1>(N), std::make_index_sequence<num_children>{});
+        select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{});
 #endif // MRA_ENABLE_HOST
       } else {
         /* if not all children are leafs the norm task will receive norms from somewhere
