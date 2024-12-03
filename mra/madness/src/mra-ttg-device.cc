@@ -38,7 +38,8 @@ auto make_project(
   const mra::FunctionData<T, NDIM>& functiondata,
   const T thresh, /// should be scalar value not complex
   ttg::Edge<mra::Key<NDIM>, void> control,
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result)
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result,
+  const char *name = "project")
 {
   /* create a non-owning buffer for domain and capture it */
   auto fn = [&, N, K, thresh, gl = mra::GLbuffer<T>()]
@@ -158,20 +159,21 @@ auto make_project(
   };
 
   ttg::Edge<mra::Key<NDIM>, void> refine("refine");
-  return ttg::make_tt<Space>(std::move(fn), ttg::edges(fuse(control, refine)), ttg::edges(refine,result), "project");
+  return ttg::make_tt<Space>(std::move(fn), ttg::edges(fuse(control, refine)), ttg::edges(refine,result), name);
 }
 
 template<mra::Dimension NDIM, typename Value, std::size_t I, std::size_t... Is>
 static auto select_send_up(const mra::Key<NDIM>& key, Value&& value,
-                           std::index_sequence<I, Is...>) {
+                           std::index_sequence<I, Is...>, const char *name = "select_send_up") {
   if (key.childindex() == I) {
+    //std::cout << name << "-select_send_up " << key << " sending to " << key.parent() << " on " << I << std::endl;
 #ifndef MRA_ENABLE_HOST
     return ttg::device::send<I>(key.parent(), std::forward<Value>(value));
 #else
     return ttg::send<I>(key.parent(), std::forward<Value>(value));
 #endif
   } else if constexpr (sizeof...(Is) > 0){
-    return select_send_up(key, std::forward<Value>(value), std::index_sequence<Is...>{});
+    return select_send_up(key, std::forward<Value>(value), std::index_sequence<Is...>{}, name);
   }
   /* if we get here we messed up */
   throw std::runtime_error("Mismatching number of children!");
@@ -185,9 +187,9 @@ static TASKTYPE do_send_leafs_up(const mra::Key<NDIM>& key, const mra::Functions
   /* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
   if (!node.any_have_children()) {
 #ifndef MRA_ENABLE_HOST
-    co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
 #else
-    select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
 #endif
   }
 }
@@ -200,7 +202,8 @@ static auto make_compress(
   const std::size_t K,
   const mra::FunctionData<T, NDIM>& functiondata,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in,
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>& out)
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>& out,
+  const char *name = "compress")
 {
   static_assert(NDIM == 3); // TODO: worth fixing?
 
@@ -214,7 +217,7 @@ static auto make_compress(
   /* append out edge to set of edges */
   auto compress_out_edges = std::tuple_cat(send_to_compress_edges, std::make_tuple(out));
   /* use the tuple variant to handle variable number of inputs while suppressing the output tuple */
-  auto do_compress = [&, N, K](const mra::Key<NDIM>& key,
+  auto do_compress = [&, N, K, name](const mra::Key<NDIM>& key,
                          //const std::tuple<const FunctionsReconstructedNodeTypes&...>& input_frns
                          const mra::FunctionsReconstructedNode<T,NDIM> &in0,
                          const mra::FunctionsReconstructedNode<T,NDIM> &in1,
@@ -260,6 +263,8 @@ static auto make_compress(
         auto& d = result.coeffs();
         set_child_info(result);
         p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+
+        //std::cout << name << " " << key << " all leafs " << result.is_all_child_leaf() << std::endl;
 
         /* d and p don't have to be synchronized into the device */
         d.buffer().reset_scope(ttg::scope::Allocate);
@@ -333,11 +338,11 @@ static auto make_compress(
         co_await ttg::device::forward(
           // select to which child of our parent we send
           //ttg::device::send<0>(key, std::move(p)),
-          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}),
+          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}, "compress"),
           // Send result to output tree
           ttg::device::send<out_terminal_id>(key, std::move(result)));
 #else
-          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{});
+          select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}, "compress");
           ttg::send<out_terminal_id>(key, std::move(result));
 #endif
       } else {
@@ -354,7 +359,7 @@ static auto make_compress(
       }
   };
   return std::make_tuple(ttg::make_tt<Space>(&do_send_leafs_up<T,NDIM>, edges(in), send_to_compress_edges, "send_leaves_up"),
-                         ttg::make_tt<Space>(std::move(do_compress), send_to_compress_edges, compress_out_edges, "do_compress"));
+                         ttg::make_tt<Space>(std::move(do_compress), send_to_compress_edges, compress_out_edges, name));
 }
 
 template <typename T, mra::Dimension NDIM>
@@ -364,7 +369,7 @@ auto make_reconstruct(
   const mra::FunctionData<T, NDIM>& functiondata,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-  const std::string& name = "reconstruct")
+  const char* name = "reconstruct")
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,NDIM>> S("S");  // passes scaling functions down
 
@@ -516,11 +521,12 @@ template<typename T, mra::Dimension NDIM>
 auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
-              const T scalarA, const T scalarB, const size_t N, const size_t K)
+              const T scalarA, const T scalarB, const size_t N, const size_t K,
+              const char* name = "gaxpy")
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> S1, S2; // to balance trees
 
-  auto func = [N, K, scalarA, scalarB](
+  auto func = [N, K, scalarA, scalarB, name](
             const mra::Key<NDIM>& key,
             const mra::FunctionsCompressedNode<T, NDIM>& t1,
             const mra::FunctionsCompressedNode<T, NDIM>& t2) -> TASKTYPE {
@@ -534,20 +540,30 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 #endif
     };
 
+    //std::cout << name << " " << key << " t1 empty " << t1.empty() << " t2 empty " << t2.empty() << std::endl;
+
     if (t1.empty() && t2.empty()) {
       /* send out an empty result */
       auto out = mra::FunctionsCompressedNode<T, NDIM>(); // out -> result
       send_out(std::move(out));
-    } else if (t1.empty()) {
+    } else if (scalarA == 0.0 || (t1.empty() && scalarB == 1.0)) {
       // just send t2
       send_out(t2);
-    } else if (t2.empty()) {
+    } else if (scalarB == 0.0 || (t2.empty() && scalarA == 1.0)) {
       // just send t1
       send_out(t1);
     } else {
 
       auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
       out.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+      /* adapt the leaf information of the result: if the children of both nodes are leafs then
+       * the children of the output node are leafs as well. */
+      for (size_type i = 0; i < N; ++i) {
+        for (auto child : children(key)) {
+          auto childidx = child.childindex();
+          out.is_child_leaf(i)[childidx] = t1.is_child_leaf(i)[childidx] && t2.is_child_leaf(i)[childidx];
+        }
+      }
 
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer());
@@ -569,31 +585,50 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       send_out(std::move(out));
     }
 
-
-    /* balance trees if needed by sending empty nodes to missing inputs */
-    auto balance_trees = [&]<std::size_t I>(){
-      std::vector<mra::Key<NDIM>> child_keys;
-      for (auto child : children(key)) {
-        child_keys.push_back(child);
+    std::vector<mra::Key<NDIM>> child_keys_left, child_keys_right;
+    /**
+     * Check for each child whether all functions are leafs in t1 and t2.
+     * For any child where all functions are leafs in only one side, we need to broadcast an empty node.
+     */
+    for (auto child : children(key)) {
+      const auto childidx = child.childindex();
+      bool t1_all_child_leaf = true, t2_all_child_leaf = true;
+      for (size_type i = 0; i < N && (t1_all_child_leaf | t2_all_child_leaf); ++i) {
+        if (!t1.is_child_leaf(i, childidx)) {
+          t1_all_child_leaf = false;
+        }
+        if (!t2.is_child_leaf(i, childidx)) {
+          t2_all_child_leaf = false;
+        }
       }
-      // send empty node
-      auto t = mra::FunctionsCompressedNode<T, NDIM>();
-      // mark all functions as leafs
-      t.set_all_child_leafs(true);
+      if (t1_all_child_leaf && !t2_all_child_leaf) {
+        //std::cout << name << " " << key << " balancing tree to left " << child << std::endl;
+        child_keys_left.push_back(child);
+      }
+      if (!t1_all_child_leaf && t2_all_child_leaf) {
+        //std::cout << name << " " << key << " balancing tree to right " << child << std::endl;
+        child_keys_right.push_back(child);
+      }
+    }
+    if (child_keys_left.size() > 0) {
 #ifndef MRA_ENABLE_HOST
-      sends.push_back(ttg::device::broadcast<I>(
-                        std::move(child_keys), std::move(t)));
+      sends.push_back(ttg::device::broadcast<1>(
+                        std::move(child_keys_left),
+                        mra::FunctionsCompressedNode<T, NDIM>()));
 #else
-      ttg::broadcast<I>(std::move(child_keys), std::move(t));
+      ttg::broadcast<1>(std::move(child_keys_left),
+                        mra::FunctionsCompressedNode<T, NDIM>());
 #endif // MRA_ENABLE_HOST
-    };
-
-    if (t1.is_all_child_leaf() && !t2.is_all_child_leaf()) {
-      /* broadcast an empty node for t1 to all children */
-      balance_trees.template operator()<1>();
-    } else if (!t1.is_all_child_leaf() && t2.is_all_child_leaf()) {
-      /* broadcast an empty node for t2 to all children */
-      balance_trees.template operator()<2>();
+    }
+    if (child_keys_right.size() > 0) {
+#ifndef MRA_ENABLE_HOST
+      sends.push_back(ttg::device::broadcast<2>(
+                        std::move(child_keys_right),
+                        mra::FunctionsCompressedNode<T, NDIM>()));
+#else
+      ttg::broadcast<2>(std::move(child_keys_right),
+                        mra::FunctionsCompressedNode<T, NDIM>());
+#endif // MRA_ENABLE_HOST
     }
 
 #ifndef MRA_ENABLE_HOST
@@ -603,7 +638,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 
   return ttg::make_tt<Space>(std::move(func),
                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
-                             ttg::edges(out, S1, S2), "gaxpy",
+                             ttg::edges(out, S1, S2), name,
                              {"in1", "in2"},
                              {"out", "S1", "S2"});
 }
@@ -613,7 +648,8 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
               const mra::FunctionData<T, NDIM>& functiondata,
-              const ttg::Buffer<mra::Domain<NDIM>>& db, const size_t N, const size_t K)
+              const ttg::Buffer<mra::Domain<NDIM>>& db, const size_t N, const size_t K,
+              const char* name = "multiply")
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
 
@@ -677,7 +713,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 
   return ttg::make_tt<Space>(std::move(func),
                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
-                             ttg::edges(out, S1, S2), "multiply",
+                             ttg::edges(out, S1, S2), name,
                              {"in1", "in2"},
                              {"out", "S1", "S2"});
 }
@@ -689,9 +725,9 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 template<typename T, mra::Dimension NDIM>
 static TASKTYPE send_norms_up(const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& node) {
 #ifndef MRA_ENABLE_HOST
-  co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+  co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "send-norms-up");
 #else
-  select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+  select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "send-norms-up");
 #endif
 }
 
@@ -699,7 +735,8 @@ static TASKTYPE send_norms_up(const mra::Key<NDIM>& key, const mra::Tensor<T, 1>
 template <typename T, Dimension NDIM>
 auto make_norm(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
-               ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result){
+               ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
+               const char* name = "norm") {
   static_assert(NDIM == 3); // TODO: worth fixing?
   using norm_tensor_type = mra::Tensor<T, 1>;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> node_e;
@@ -709,19 +746,20 @@ auto make_norm(size_type N, size_type K,
   /**
    * Takes a tensor of norms from each child
    */
-  auto norm_fn = [N, K](const mra::Key<NDIM>& key,
-                        const norm_tensor_type& norm0,
-                        const norm_tensor_type& norm1,
-                        const norm_tensor_type& norm2,
-                        const norm_tensor_type& norm3,
-                        const norm_tensor_type& norm4,
-                        const norm_tensor_type& norm5,
-                        const norm_tensor_type& norm6,
-                        const norm_tensor_type& norm7,
-                        const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+  auto norm_fn = [N, K, name](const mra::Key<NDIM>& key,
+                              const norm_tensor_type& norm0,
+                              const norm_tensor_type& norm1,
+                              const norm_tensor_type& norm2,
+                              const norm_tensor_type& norm3,
+                              const norm_tensor_type& norm4,
+                              const norm_tensor_type& norm5,
+                              const norm_tensor_type& norm6,
+                              const norm_tensor_type& norm7,
+                              const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
     // TODO: pass ttg::scope::Allocate once that's possible
     // TODO: reuse of one of the input norms?
     auto norms_result = norm_tensor_type(N);
+    //std::cout << name << " " << key << std::endl;
 #ifndef MRA_ENABLE_HOST
     co_await ttg::device::select(norms_result.buffer(), in.coeffs().buffer(),
                                  norm0.buffer(), norm1.buffer(), norm2.buffer(), norm3.buffer(),
@@ -739,18 +777,21 @@ auto make_norm(size_type N, size_type K,
 #ifndef MRA_ENABLE_HOST
     if (key.level() == 0) {
       // send to result
+      //std::cout << name << " " << key << " sending to result " << std::endl;
       co_await ttg::device::send<num_children>(key, std::move(norms_result));
     } else {
       // send norms upstream
-      co_await select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{});
+      co_await select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{}, "norm");
     }
 #else
     if (key.level() == 0) {
       // send to result
+      //std::cout << "norm send to result " << key << std::endl;
       ttg::send<num_children>(key, std::move(norms_result));
     } else {
       // send norms upstream
-      select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{});
+      //std::cout << "norm send up " << key << std::endl;
+      select_send_up(key, std::move(norms_result), std::make_index_sequence<num_children>{}, "norm");
     }
 #endif // MRA_ENABLE_HOST
   };
@@ -758,15 +799,16 @@ auto make_norm(size_type N, size_type K,
   auto norm_tt = ttg::make_tt<Space>(std::move(norm_fn),
                                      ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3, norm_e4, norm_e5, norm_e6, norm_e7, node_e),
                                      ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3, norm_e4, norm_e5, norm_e6, norm_e7, result),
-                                     "norm-task");
+                                     name);
 
   /**
    * Task to dispatch incoming compressed nodes and forward empty
    * nodes for children that do not exist
    */
-  auto dispatch_fn = [N, K]
+  auto dispatch_fn = [N, K, name]
                    (const mra::Key<NDIM>& key,
                     const mra::FunctionsCompressedNode<T, NDIM>& in) -> TASKTYPE {
+    //std::cout << name << "-dispatch " << key << " sending node to " << num_children << std::endl;
 #ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(ttg::device::send<num_children>(key, in));
 #else  // MRA_ENABLE_HOST
@@ -775,19 +817,22 @@ auto make_norm(size_type N, size_type K,
     /* feed empty tensor to all */
     for (auto child : children(key)) {
       bool is_all_leaf = true;
-      for (size_type i = 0; i < N; ++i) {
+      for (size_type i = 0; i < N && is_all_leaf; ++i) {
         is_all_leaf &= in.is_child_leaf(i, child.childindex());
       }
+      //std::cout << "norm dispatch " << key << " child " << child << " all leaf " << is_all_leaf << std::endl;
       if (is_all_leaf) {
+        //std::cout << name << "-dispatch " << key << " sending empty norms to child " << child.childindex() << " " << child << std::endl;
         // pass up a null tensor
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{}));
+        sends.push_back(select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{}, "dispatch"));
 #else  // MRA_ENABLE_HOST
-        select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{});
+        select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{}, "dispatch");
 #endif // MRA_ENABLE_HOST
       } else {
         /* if not all children are leafs the norm task will receive norms from somewhere
          * so there is nothing to be done here */
+        //std::cout << name << "-dispatch " << key << " child " << child.childindex() << " " << child << " has not all leaf" << std::endl;
       }
     }
 #ifndef MRA_ENABLE_HOST
@@ -913,11 +958,11 @@ void test_pcr(std::size_t N, std::size_t K) {
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   // C(P)
-  auto compress = make_compress(N, K, functiondata, project_result, compress_result);
+  auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   // // R(C(P))
-  auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
+  auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result, "reconstruct-rcp");
   // C(R(C(P)))
-  auto compress_r = make_compress(N, K, functiondata, reconstruct_result, compress_reconstruct_result);
+  auto compress_r = make_compress(N, K, functiondata, reconstruct_result, compress_reconstruct_result, "compress-crcp");
 
   // C(R(C(P))) - C(P)
   auto gaxpy = make_gaxpy(compress_reconstruct_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
@@ -962,7 +1007,7 @@ int main(int argc, char **argv) {
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
-  test_pcr<double, 3>(1, 10);
+  test_pcr<double, 3>(10, 10);
 
   ttg::finalize();
 }

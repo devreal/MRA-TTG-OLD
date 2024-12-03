@@ -213,7 +213,9 @@ namespace mra {
         : m_key(key)
         , m_coeffs()
         , m_is_child_leafs(N)
-        { }
+        {
+          set_all_child_leafs(true);
+        }
 
         FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K)
         : m_key(key)
@@ -245,6 +247,10 @@ namespace mra {
         }
 
         std::array<bool, Key<NDIM>::num_children()>& is_child_leaf(size_type i) {
+          return m_is_child_leafs[i];
+        }
+
+        const std::array<bool, Key<NDIM>::num_children()>& is_child_leaf(size_type i) const {
           return m_is_child_leafs[i];
         }
 

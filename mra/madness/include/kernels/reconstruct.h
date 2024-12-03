@@ -91,7 +91,7 @@ namespace mra {
         }
       }
       /* no need to sync threads here, the impl will sync before the r_arr are used */
-      reconstruct_kernel_impl(key, K, &node_ptr[TWOK2NDIM*blockid],
+      reconstruct_kernel_impl(key, K, node_ptr ? &node_ptr[TWOK2NDIM*blockid] : nullptr,
                               tmp_ptr + blockid*reconstruct_tmp_size<NDIM>(K),
                               hg_ptr, &from_parent_ptr[K2NDIM*blockid],
                               block_r_arr);
