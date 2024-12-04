@@ -19,7 +19,7 @@ namespace mra {
       const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
       SHARED TensorView<T, NDIM> n;
       if (is_t0) {
-        n = TensorView<T, NDIM>(node, K);
+        n = TensorView<T, NDIM>(node, 2*K);
       }
       SYNCTHREADS();
       T norm = normf(n);
@@ -41,9 +41,9 @@ namespace mra {
       size_type K,
       const Key<NDIM>& key)
     {
-      const size_type K2NDIM = std::pow(K, NDIM);
-      for (size_type blockid = blockIdx.x; blockid < N; blockid += blockDim.x) {
-        norm_kernel_impl<T, NDIM>(nullptr == node ? nullptr : &node[K2NDIM*blockid],
+      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
+      for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
+        norm_kernel_impl<T, NDIM>(nullptr == node ? nullptr : &node[TWOK2NDIM*blockid],
                                   result_norms, child_norms, blockid, K);
       }
     }
