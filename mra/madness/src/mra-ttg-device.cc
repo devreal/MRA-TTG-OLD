@@ -57,8 +57,8 @@ auto make_project(
         break;
       }
     }
-    //std::cout << "project " << key << " all initial " << all_initial_level << std::endl;
     if (all_initial_level) {
+      //std::cout << "project " << key << " all initial " << std::endl;
       std::vector<mra::Key<NDIM>> bcast_keys;
       /* TODO: children() returns an iteratable object but broadcast() expects a contiguous memory range.
                 We need to fix broadcast to support any ranges */
@@ -235,25 +235,24 @@ static auto make_compress(
       // create empty, may be reset if needed
       mra::FunctionsReconstructedNode<T, NDIM> p(key, N);
 
-      auto set_child_info = [&](mra::FunctionsCompressedNode<T, NDIM>& result){
-        for (std::size_t i = 0; i < N; ++i) {  // Collect child leaf info
-          result.is_child_leaf(i) = std::array{in0.is_leaf(i), in1.is_leaf(i), in2.is_leaf(i),
-                                               in3.is_leaf(i), in4.is_leaf(i), in5.is_leaf(i),
-                                               in6.is_leaf(i), in7.is_leaf(i)};
-        }
-      };
-
       /* check if all inputs are empty */
       bool all_empty = in0.empty() && in1.empty() && in2.empty() && in3.empty() &&
                        in4.empty() && in5.empty() && in6.empty() && in7.empty();
 
       if (all_empty) {
-        set_child_info(result);
+        // Collect child leaf info
+        mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
         /* all data is still on the host so the coefficients are zero */
         for (std::size_t i = 0; i < N; ++i) {
           p.sum(i) = 0.0;
         }
-        //std::cout << "compress " << key << " all empty " << std::endl;
+        p.set_all_leaf(false);
+        // std::cout << name << " " << key << " all empty, all children leafs " << result.is_all_child_leaf() << " ["
+        //           << in0.is_all_leaf() << ", " << in1.is_all_leaf() << ", "
+        //           << in2.is_all_leaf() << ", " << in3.is_all_leaf() << ", "
+        //           << in4.is_all_leaf() << ", " << in5.is_all_leaf() << ", "
+        //           << in6.is_all_leaf() << ", " << in7.is_all_leaf() << "] "
+        //           << std::endl;
       } else {
 
         /* some inputs are on the device so submit a kernel */
@@ -261,8 +260,11 @@ static auto make_compress(
         // allocate the result
         result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
         auto& d = result.coeffs();
-        set_child_info(result);
+        // Collect child leaf info
+        mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
         p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+        p.set_all_leaf(false);
+        assert(p.is_all_leaf() == false);
 
         //std::cout << name << " " << key << " all leafs " << result.is_all_child_leaf() << std::endl;
 
@@ -404,6 +406,7 @@ auto make_reconstruct(
       const mra::Key<NDIM> child= *it;
       auto& r = r_arr[it.index()];
       r = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
+      // collect leaf information
       for (std::size_t i = 0; i < N; ++i) {
         r.is_leaf(i) = node.is_child_leaf(i, it.index());
       }
@@ -542,15 +545,21 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 
     //std::cout << name << " " << key << " t1 empty " << t1.empty() << " t2 empty " << t2.empty() << std::endl;
 
-    if (t1.empty() && t2.empty()) {
+    /**
+     * We can forward inputs only if the scalars are right and if the other input is empty and
+     * all its children are leafs. Otherwise we need to compute the GAXPY and/or adjust the leaf information.
+     */
+    if ((t1.empty() && t2.empty())) {
       /* send out an empty result */
-      auto out = mra::FunctionsCompressedNode<T, NDIM>(); // out -> result
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N); // out -> result
+      mra::apply_leaf_info(out, t1, t2);
+      //std::cout << name << " " << key << " t1 empty, t2 empty, all leafs " << out.is_all_child_leaf() << std::endl;
       send_out(std::move(out));
-    } else if (scalarA == 0.0 || (t1.empty() && scalarB == 1.0)) {
-      // just send t2
+    } else if ((scalarA == 0.0 || (t1.empty() && scalarB == 1.0)) && t1.is_all_child_leaf()) {
+      // just send t2, t1 is empty and all children are leafs
       send_out(t2);
-    } else if (scalarB == 0.0 || (t2.empty() && scalarA == 1.0)) {
-      // just send t1
+    } else if ((scalarB == 0.0 || (t2.empty() && scalarA == 1.0)) && t2.is_all_child_leaf()) {
+      // just send t1, t2 is empty and all children are leafs
       send_out(t1);
     } else {
 
@@ -558,12 +567,17 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       out.coeffs().buffer().reset_scope(ttg::scope::Allocate);
       /* adapt the leaf information of the result: if the children of both nodes are leafs then
        * the children of the output node are leafs as well. */
+
+      mra::apply_leaf_info(out, t1, t2);
+      //std::cout << name << " " << key << " all leafs " << out.is_all_child_leaf() << std::endl;
+#if 0
       for (size_type i = 0; i < N; ++i) {
         for (auto child : children(key)) {
           auto childidx = child.childindex();
           out.is_child_leaf(i)[childidx] = t1.is_child_leaf(i)[childidx] && t2.is_child_leaf(i)[childidx];
         }
       }
+#endif // 0
 
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer());
@@ -614,20 +628,20 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 #ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::broadcast<1>(
                         std::move(child_keys_left),
-                        mra::FunctionsCompressedNode<T, NDIM>()));
+                        mra::FunctionsCompressedNode<T, NDIM>(key, N)));
 #else
       ttg::broadcast<1>(std::move(child_keys_left),
-                        mra::FunctionsCompressedNode<T, NDIM>());
+                        mra::FunctionsCompressedNode<T, NDIM>(key, N));
 #endif // MRA_ENABLE_HOST
     }
     if (child_keys_right.size() > 0) {
 #ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::broadcast<2>(
                         std::move(child_keys_right),
-                        mra::FunctionsCompressedNode<T, NDIM>()));
+                        mra::FunctionsCompressedNode<T, NDIM>(key, N)));
 #else
       ttg::broadcast<2>(std::move(child_keys_right),
-                        mra::FunctionsCompressedNode<T, NDIM>());
+                        mra::FunctionsCompressedNode<T, NDIM>(key, N));
 #endif // MRA_ENABLE_HOST
     }
 
@@ -670,9 +684,11 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
     if (t1.empty() || t2.empty()) {
       /* send out an empty result */
       auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N);
+      mra::apply_leaf_info(out, t1, t2);
       send_out(std::move(out));
     } else {
       auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+      mra::apply_leaf_info(out, t1, t2);
       const auto& phibar = functiondata.get_phibar();
       const auto& phiT = functiondata.get_phiT();
       const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
@@ -817,12 +833,13 @@ auto make_norm(size_type N, size_type K,
     /* feed empty tensor to all */
     for (auto child : children(key)) {
       bool is_all_leaf = true;
+      const auto childidx = child.childindex();
       for (size_type i = 0; i < N && is_all_leaf; ++i) {
-        is_all_leaf &= in.is_child_leaf(i, child.childindex());
+        is_all_leaf &= in.is_child_leaf(i, childidx);
       }
       //std::cout << "norm dispatch " << key << " child " << child << " all leaf " << is_all_leaf << std::endl;
       if (is_all_leaf) {
-        //std::cout << name << "-dispatch " << key << " sending empty norms to child " << child.childindex() << " " << child << std::endl;
+        //std::cout << name << "-dispatch " << key << " sending empty norms to child " << childidx << " " << child << std::endl;
         // pass up a null tensor
 #ifndef MRA_ENABLE_HOST
         sends.push_back(select_send_up(child, mra::Tensor<T, 1>(), std::make_index_sequence<num_children>{}, "dispatch"));
@@ -832,7 +849,7 @@ auto make_norm(size_type N, size_type K,
       } else {
         /* if not all children are leafs the norm task will receive norms from somewhere
          * so there is nothing to be done here */
-        //std::cout << name << "-dispatch " << key << " child " << child.childindex() << " " << child << " has not all leaf" << std::endl;
+        //std::cout << name << "-dispatch " << key << " child " << childidx << " " << child << " has not all leaf" << std::endl;
       }
     }
 #ifndef MRA_ENABLE_HOST

@@ -327,6 +327,45 @@ namespace mra {
         }
     };
 
+    /**
+     * Takes one or more reconstructed function nodes and applies the leaf information to the target node.
+     * If the nodes of all functions of the source nodes are leafs then the the target
+     * node will be leaf as well.
+     */
+    template<typename T, Dimension NDIM, typename... Nodes>
+    requires((std::is_same_v<FunctionsReconstructedNode<T, NDIM>, std::decay_t<Nodes>> && ...)
+          && sizeof...(Nodes) > 0)
+    void apply_leaf_info(FunctionsReconstructedNode<T, NDIM>& target, Nodes&&... src) {
+      for (size_type i = 0; i < target.count(); ++i) {
+        target.is_leaf(i) = (src.is_leaf(i) && ...);
+      }
+    }
+
+    /**
+     * Takes one or more compressed function nodes and applies the child information to the target node.
+     * If the children of all functions of the source nodes are leafs then the children of the target
+     * node will be leafs as well.
+     */
+    template<typename T, Dimension NDIM, typename... Nodes>
+    requires((std::is_same_v<FunctionsCompressedNode<T, NDIM>, std::decay_t<Nodes>> && ...)
+          && sizeof...(Nodes) > 0)
+    void apply_leaf_info(FunctionsCompressedNode<T, NDIM>& target, Nodes&&... src) {
+      for (size_type i = 0; i < target.count(); ++i) {
+        for (size_type j = 0; j < Key<NDIM>::num_children(); ++j) {
+          target.is_child_leaf(i)[j] = (src.is_child_leaf(i)[j] && ...);
+        }
+      }
+    }
+
+    template<typename T, Dimension NDIM, typename... Nodes>
+    requires((std::is_same_v<FunctionsReconstructedNode<T, NDIM>, std::decay_t<Nodes>> && ...)
+          && sizeof...(Nodes) == Key<NDIM>::num_children())
+    void apply_leaf_info(FunctionsCompressedNode<T, NDIM>& target, Nodes&&... src) {
+      for (std::size_t i = 0; i < target.count(); ++i) {
+        target.is_child_leaf(i) = std::array{src.is_leaf(i)...};
+      }
+    }
+
     template <typename T, Dimension NDIM, typename ostream>
     ostream& operator<<(ostream& s, const FunctionsReconstructedNode<T,NDIM>& node) {
       for (size_type i = 0; i < node.count(); ++i) {
