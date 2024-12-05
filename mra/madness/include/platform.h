@@ -97,4 +97,10 @@ typedef ttg::device::Stream cudaStream_t;
 
 #endif // MRA_ENABLE_HOST
 
+namespace mra::detail {
+  SCOPE inline bool is_team_lead() {
+    return (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+  }
+} // namespace mra::detail
+
 #endif // MRA_DEVICE_PLATFORM_H
