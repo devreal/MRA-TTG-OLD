@@ -115,15 +115,15 @@ auto make_project(
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
-        T* tmp_device = tmp_scratch.device_ptr();
+        T* tmp_ptr = tmp_scratch.device_ptr();
         bool *is_leafs_device = is_leafs_scratch.device_ptr();
         auto *f_ptr   = fb.current_device_ptr();
         auto& domain = *db.current_device_ptr();
         auto  gldata = gl.current_device_ptr();
 
         /* submit the kernel */
-        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, coeffs_view,
-                              phibar_view, hgT_view, tmp_device,
+        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, tmp_ptr,
+                              phibar_view, hgT_view, coeffs_view,
                               is_leafs_device, thresh, ttg::device::current_stream());
 
         /* wait and get is_leaf back */

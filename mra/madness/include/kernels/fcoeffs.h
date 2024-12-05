@@ -17,10 +17,10 @@ namespace mra {
   SCOPE size_type fcoeffs_tmp_size(size_type K) {
     const size_type K2NDIM = std::pow(K,NDIM);
     const size_type TWOK2NDIM = std::pow(2*K, NDIM);
-    return (3*TWOK2NDIM) // workspace, values and r
-        + (NDIM*K2NDIM) // xvec in fcube
-        + (NDIM*K)      // x in fcube
-        + (3*K2NDIM);   // workspace in transform, child_values, r
+    return (3*TWOK2NDIM) // workspace, values and r0
+         + (NDIM*K2NDIM) // xvec in fcube
+         + (NDIM*K)      // x in fcube
+         + (2*K2NDIM);   // child_values, r1
   }
 
   namespace detail {
@@ -32,42 +32,37 @@ namespace mra {
       const Fn& f,
       Key<NDIM> key,
       size_type K,
-      T* tmp,
-      const T* phibar_ptr,
-      T* coeffs_ptr,
-      const T* hgT_ptr,
+      size_type fnid,
+      /* temporaries */
+      TensorView<T, NDIM>& values,
+      TensorView<T, NDIM>& r0,
+      TensorView<T, NDIM>& r1,
+      TensorView<T, NDIM>& child_values,
+      TensorView<T, 2   >& x_vec,
+      TensorView<T, 2   >& x,
+      T* workspace, /* variable size so pointer only */
+      /* constants */
+      const TensorView<T, 2>& phibar,
+      const TensorView<T, 2>& hgT,
+      /* result */
+      TensorView<T, NDIM>&  coeffs,
       bool *is_leaf,
       T thresh)
     {
-      bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-      const size_type K2NDIM = std::pow(K, NDIM);
-      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
-      /* reconstruct tensor views from pointers
-      * make sure we have the values at the same offset (0) as in kernel 1 */
-      SHARED TensorView<T, NDIM> values, r, child_values, workspace, coeffs;
-      SHARED TensorView<T, 2   > hgT, x_vec, x, phibar;
-      if (is_t0) {
-        values       = TensorView<T, NDIM>(&tmp[0       ], 2*K);
-        r            = TensorView<T, NDIM>(&tmp[TWOK2NDIM+0*K2NDIM], K);
-        child_values = TensorView<T, NDIM>(&tmp[TWOK2NDIM+1*K2NDIM], K);
-        workspace    = TensorView<T, NDIM>(&tmp[TWOK2NDIM+2*K2NDIM], K);
-        x_vec        = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM], NDIM, K2NDIM);
-        x            = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM + (NDIM*K2NDIM)], NDIM, K);
-        phibar       = TensorView<T, 2   >(phibar_ptr, K, K);
-        coeffs       = TensorView<T, NDIM>(coeffs_ptr, K);
-      }
-      SYNCTHREADS();
-
       /* check for our function */
       if ((key.level() < initial_level(f))) {
         // std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;
         coeffs = T(1e7); // set to obviously bad value to detect incorrect use
-        *is_leaf = false;
+        if (is_team_lead()) {
+          *is_leaf = false;
+        }
       }
       if (is_negligible<Fn,T,NDIM>(f, D.template bounding_box<T>(key), mra::truncate_tol(key,thresh))) {
         /* zero coeffs */
         coeffs = T(0.0);
-        *is_leaf = true;
+        if (is_team_lead()) {
+          *is_leaf = true;
+        }
       } else {
 
         /* compute one child */
@@ -75,34 +70,24 @@ namespace mra {
           Key<NDIM> child = key.child_at(bid);
           child_values = 0.0; // TODO: needed?
           fcube(D, gldata, f, child, thresh, child_values, K, x, x_vec);
-          r = 0.0;
-          transform(child_values, phibar, r, workspace);
+          transform(child_values, phibar, r0, workspace);
           auto child_slice = get_child_slice<NDIM>(key, K, bid);
-          values(child_slice) = r;
+          values(child_slice) = r0;
         }
 
-        /* reallocate some of the tensorviews */
-        if (is_t0) {
-          r          = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
-          workspace  = TensorView<T, NDIM>(&tmp[2*TWOK2NDIM], 2*K);
-          hgT        = TensorView<T, 2>(hgT_ptr, 2*K, 2*K);
-        }
-        SYNCTHREADS();
         T fac = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5),T(NDIM*(1+key.level()))));
-        r = 0.0;
-
         values *= fac;
         // Inlined: filter<T,K,NDIM>(values,r);
-        transform<NDIM>(values, hgT, r, workspace);
+        transform<NDIM>(values, hgT, r1, workspace);
 
         auto child_slice = get_child_slice<NDIM>(key, K, 0);
-        auto r_slice = r(child_slice);
+        auto r_slice = r1(child_slice);
         coeffs = r_slice; // extract sum coeffs
         r_slice = 0.0; // zero sum coeffs so can easily compute norm of difference coeffs
         /* TensorView assignment synchronizes */
-        T norm = mra::normf(r);
+        T norm = mra::normf(r1);
         //std::cout << "project norm " << norm << " thresh " << thresh << std::endl;
-        if (is_t0) {
+        if (is_team_lead()) {
           *is_leaf = (norm < truncate_tol(key,thresh)); // test norm of difference coeffs
           if (!*is_leaf) {
             // std::cout << "fcoeffs not leaf " << key << " norm " << norm << std::endl;
@@ -120,19 +105,47 @@ namespace mra {
       size_type N,
       size_type K,
       T* tmp,
-      const T* phibar_ptr,
-      T* coeffs_ptr,
-      const T* hgT_ptr,
+      const TensorView<T, 2> phibar_view,
+      const TensorView<T, 2> hgT_view,
+      TensorView<T, NDIM+1>  coeffs_view,
       bool *is_leaf,
       T thresh)
     {
-      const size_type K2NDIM = std::pow(K,NDIM);
+      /* set up temporaries once in each block */
+      SHARED TensorView<T, NDIM> values, r0, r1, child_values, coeffs;
+      SHARED TensorView<T, 2   > x_vec, x;
+      SHARED T* workspace;
+      if (is_team_lead()) {
+        const size_type K2NDIM    = std::pow(K, NDIM);
+        const size_type TWOK2NDIM = std::pow(2*K, NDIM);
+        size_type tmp_offset = blockIdx.x*fcoeffs_tmp_size<NDIM>(K);
+        values       = TensorView<T, NDIM>(&tmp[tmp_offset], 2*K);
+        tmp_offset  += TWOK2NDIM;
+        r0           = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+        tmp_offset  += K2NDIM;
+        r1           = TensorView<T, NDIM>(&tmp[tmp_offset], 2*K);
+        tmp_offset  += TWOK2NDIM;
+        child_values = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+        tmp_offset  += K2NDIM;
+        x_vec        = TensorView<T, 2   >(&tmp[tmp_offset], NDIM, K2NDIM);
+        tmp_offset  += NDIM*K2NDIM;
+        x            = TensorView<T, 2   >(&tmp[tmp_offset], NDIM, K);
+        tmp_offset  += NDIM*K;
+        workspace    = &tmp[tmp_offset];
+      }
+      SYNCTHREADS();
       /* adjust pointers for the function of each block */
-      size_type blockid = blockIdx.x;
-      fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K,
-                          &tmp[(fcoeffs_tmp_size<NDIM>(K)*blockid)],
-                          phibar_ptr, coeffs_ptr+(blockid*K2NDIM),
-                          hgT_ptr, &is_leaf[blockid], thresh);
+      for (size_type fnid = blockIdx.x; fnid < N; fnid += gridDim.x) {
+        if (is_team_lead()) {
+          /* get the coefficient inputs */
+          coeffs       = coeffs_view(fnid);
+        }
+        SYNCTHREADS();
+        fcoeffs_kernel_impl(D, gldata, fns[fnid], key, K, fnid,
+                            values, r0, r1, child_values, x_vec, x, workspace,
+                            phibar_view, hgT_view, coeffs,
+                            &is_leaf[fnid], thresh);
+      }
     }
 
   } // namespace detail
@@ -148,10 +161,10 @@ namespace mra {
       const mra::Key<NDIM>& key,
       size_type N,
       size_type K,
-      mra::TensorView<T, NDIM+1>& coeffs_view,
+      T* tmp,
       const mra::TensorView<T, 2>& phibar_view,
       const mra::TensorView<T, 2>& hgT_view,
-      T* tmp,
+      mra::TensorView<T, NDIM+1>& coeffs_view,
       bool* is_leaf_scratch,
       T thresh,
       ttg::device::Stream stream)
@@ -164,9 +177,9 @@ namespace mra {
     Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
     /* launch one block per child */
     CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, 0, stream,
-      (D, gldata, fns, key, N, K, tmp, phibar_view.data(),
-      coeffs_view.data(), hgT_view.data(),
-      is_leaf_scratch, thresh));
+      (D, gldata, fns, key, N, K, tmp,
+       phibar_view, hgT_view, coeffs_view,
+       is_leaf_scratch, thresh));
     checkSubmit();
   }
 
