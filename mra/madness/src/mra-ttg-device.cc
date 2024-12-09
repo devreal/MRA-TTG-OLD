@@ -95,7 +95,7 @@ auto make_project(
          * TODO: figure out a way to outline this into a function or coroutine
          */
         // allocate tensor
-        result = node_type(key, N, K);
+        result = node_type(key, N, K, ttg::scope::Allocate);
         tensor_type& coeffs = result.coeffs();
 
         /* global function data */
@@ -109,9 +109,6 @@ auto make_project(
         const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-
-        /* coeffs don't have to be synchronized into the device */
-        coeffs.buffer().reset_scope(ttg::scope::Allocate);
 
         /* TODO: cannot do this from a function, had to move it into the main task */
   #ifndef MRA_ENABLE_HOST
@@ -265,19 +262,15 @@ static auto make_compress(
         /* some inputs are on the device so submit a kernel */
 
         // allocate the result
-        result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+        result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
         auto& d = result.coeffs();
         // Collect child leaf info
         mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
-        p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+        p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
         p.set_all_leaf(false);
         assert(p.is_all_leaf() == false);
 
         //std::cout << name << " " << key << " all leafs " << result.is_all_child_leaf() << std::endl;
-
-        /* d and p don't have to be synchronized into the device */
-        d.buffer().reset_scope(ttg::scope::Allocate);
-        p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
 
         /* stores sumsq for each child and for result at the end of the kernel */
         const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
@@ -443,9 +436,7 @@ auto make_reconstruct(
      *       we may have to consolidate the r's into a single buffer and pick them apart afterwards.
      *       That will require the ability to ref-count 'parent buffers'. */
     for (int i = 0; i < key.num_children(); ++i) {
-      r_arr[i].allocate(K);
-      // no need to send this data to the device
-      r_arr[i].coeffs().buffer().reset_scope(ttg::scope::Allocate);
+      r_arr[i].allocate(K, ttg::scope::Allocate);
     }
 
 #ifndef MRA_ENABLE_HOST
@@ -568,8 +559,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       send_out(t1);
     } else {
 
-      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
-      out.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
       /* adapt the leaf information of the result: if the children of both nodes are leafs then
        * the children of the output node are leafs as well. */
 
@@ -694,7 +684,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       mra::apply_leaf_info(out, t1, t2);
       send_out(std::move(out));
     } else {
-      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+      auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
       mra::apply_leaf_info(out, t1, t2);
       const auto& phibar = functiondata.get_phibar();
       const auto& phiT = functiondata.get_phiT();

@@ -8,7 +8,6 @@
 #include <ttg.h>
 #include <ttg/serialization.h>
 #include <ttg/serialization/std/array.h>
-#include <madness/world/world.h>
 
 #include "allocator.h"
 
@@ -16,7 +15,7 @@
 
 namespace mra {
 
-  template<typename T, Dimension NDIM, class Allocator = std::allocator<T>>
+  template<typename T, Dimension NDIM, class Allocator = DeviceAllocator<T>>
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
@@ -51,7 +50,7 @@ namespace mra {
     Tensor() = default;
 
     /* generic */
-    explicit Tensor(size_type dim)
+    explicit Tensor(size_type dim, ttg::scope scope = ttg::scope::SyncIn)
     : ttvalue_type()
     , m_dims(create_dims_array(dim, std::make_index_sequence<NDIM>{}))
     , m_buffer(size())
@@ -67,10 +66,10 @@ namespace mra {
                     "Number of arguments does not match number of Dimensions.");
     }
 
-    Tensor(const std::array<size_type, NDIM>& dims)
+    Tensor(const std::array<size_type, NDIM>& dims, ttg::scope scope = ttg::scope::SyncIn)
     : ttvalue_type()
     , m_dims(dims)
-    , m_buffer(size())
+    , m_buffer(size(), scope)
     {
       // TODO: make this static_assert (clang 14 doesn't get it)
       assert(dims.size() == NDIM);

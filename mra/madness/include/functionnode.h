@@ -61,10 +61,10 @@ namespace mra {
         , m_coeffs()
         { }
 
-        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K)
+        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
         : m_key(key)
         , m_metadata(N)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, K))
+        , m_coeffs(detail::make_dims<NDIM+1>(N, K), scope)
         {}
 
 
@@ -78,11 +78,11 @@ namespace mra {
          * Allocate space for coefficients using K.
          * The node must be empty before and will not be empty afterwards.
          */
-        void allocate(size_type K) {
+        void allocate(size_type K, ttg::scope scope = ttg::scope::SyncIn) {
           if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
           size_type N = m_metadata.size();
           if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
-          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, K));
+          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, K), scope);
         }
 
         bool has_children(size_type i) const {
@@ -217,9 +217,9 @@ namespace mra {
           set_all_child_leafs(true);
         }
 
-        FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K)
+        FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
         : m_key(key)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K))
+        , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K), scope)
         , m_is_child_leafs(N)
         { }
 
@@ -227,11 +227,11 @@ namespace mra {
          * Allocate space for coefficients using K.
          * The node must be empty before and will not be empty afterwards.
          */
-        void allocate(size_type K) {
+        void allocate(size_type K, ttg::scope scope = ttg::scope::SyncIn) {
           if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
           size_type N = m_is_child_leafs.size();
           if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
-          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K));
+          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K), scope);
         }
 
         FunctionsCompressedNode(FunctionsCompressedNode&& other) = default;
