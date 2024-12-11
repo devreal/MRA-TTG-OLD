@@ -6,8 +6,8 @@ if (TARGET ttg)
     message(STATUS "Found ttg CONFIG at ${ttg_CONFIG}")
 else (TARGET ttg)
 
-  include(FetchContent)
-  FetchContent_Declare(
+include(FetchContent)
+FetchContent_Declare(
       ttg
       GIT_REPOSITORY      https://github.com/devreal/ttg.git
       GIT_TAG             64260166a82921371e7de9dd445c0a96b2768aab

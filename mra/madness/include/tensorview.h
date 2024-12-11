@@ -394,7 +394,7 @@ namespace mra {
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(std::is_integral_v<Dims>&&...)
+    requires(!std::is_const_v<std::remove_reference_t<T>> && (std::is_integral_v<Dims>&&...))
     SCOPE value_type& operator()(Dims... idxs) {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
@@ -405,7 +405,7 @@ namespace mra {
     /* access host-side elements */
     template<typename... Dims>
     requires(std::is_integral_v<Dims>&&...)
-    SCOPE const value_type operator()(Dims... idxs) const {
+    SCOPE value_type operator()(Dims... idxs) const {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
       // let's hope the compiler will hoist this out of loops
