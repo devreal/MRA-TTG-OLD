@@ -7,6 +7,7 @@
 #include "tensorview.h"
 #include "kernels/child_slice.h"
 #include "kernels/transform.h"
+#include "maxk.h"
 
 #include <array>
 
@@ -70,6 +71,7 @@ namespace mra {
     }
 
     template<typename T, Dimension NDIM>
+    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
     GLOBALSCOPE void compress_kernel(
       Key<NDIM> key,
       size_type N,
@@ -113,7 +115,8 @@ namespace mra {
     const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
     cudaStream_t stream)
   {
-    Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
 
     CALL_KERNEL(detail::compress_kernel, N, thread_dims, 0, stream,
       (key, N, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
