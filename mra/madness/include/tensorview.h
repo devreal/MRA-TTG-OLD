@@ -410,11 +410,13 @@ namespace mra {
 
     /* array-style flattened access */
     SCOPE value_type& operator[](size_type i) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return m_ptr[i];
     }
 
     /* array-style flattened access */
-    SCOPE const_value_type& operator[](size_type i) const {
+    SCOPE const_value_type operator[](size_type i) const {
+      if (m_ptr == nullptr) return const_value_type{};
       return m_ptr[i];
     }
 
