@@ -272,23 +272,11 @@ namespace mra {
     }
 
     SCOPE value_type& operator[](size_type i) {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+      return m_ptr[offset(i)];
     }
 
-    SCOPE const value_type& operator[](size_type i) const {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+    SCOPE const_value_type& operator[](size_type i) const {
+      return m_ptr[offset(i)];
     }
 
     template <typename...Args>
@@ -426,7 +414,7 @@ namespace mra {
     }
 
     /* array-style flattened access */
-    SCOPE const value_type& operator[](size_type i) const {
+    SCOPE const_value_type& operator[](size_type i) const {
       return m_ptr[i];
     }
 
@@ -447,8 +435,10 @@ namespace mra {
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
-    SCOPE value_type operator()(Dims... idxs) const {
+    requires(std::is_integral_v<Dims>&&...)
+    SCOPE const_value_type operator()(Dims... idxs) const {
+      static_assert(sizeof...(Dims) == NDIM,
+                    "Number of arguments does not match number of Dimensions.");
       // let's hope the compiler will hoist this out of loops
       if (m_ptr == nullptr) {
         return T(0);
