@@ -12,8 +12,42 @@ namespace mra {
 /* reference implementation, adapted from madness */
 template <typename aT, typename bT, typename cT>
 SCOPE
+void mTxmq_xyz(size_type dimi, size_type dimj, size_type dimk,
+               cT* __restrict__ c, const aT* a, const bT* b, ssize_type ldb=-1) {
+  if (ldb == -1) ldb=dimj;
+  // assume the i dimension is the square of the j dimension
+  assert(dimi == dimj*dimj);
+  assert(dimj == blockDim.x);
+  assert(dimk == blockDim.y);
+  /* The i dimension is the slow dimension of AT and C.
+   * We can thus split the i dimension into multiple GEMM of dimk*dimj
+   * and distribute the i dimension across the the z dimension of the thread block.
+   * Note: Access to B is coalesced (dimj*dimk) in the x and y block dimensions while access to A is strided
+   * by dimi with a blocklength of dimj. */
+  for (size_type i = threadIdx.z; i < dimi; i += blockDim.z*dimj) {
+    const aT *ai = a + i;
+    cT* ci = c + i;
+    // beta = 0
+    cT sum = 0.0;
+    /* i and j are implicit, k is explicit */
+    for (size_type k = 0; k < dimk; ++k) {
+      const aT aval = ai[k*dimi + threadIdx.y];
+      const bT bval = b[k*ldb + threadIdx.x];
+      sum += aval * bval;
+    }
+    ci[threadIdx.y*dimj + threadIdx.x] = sum;
+  }
+  SYNCTHREADS();
+}
+
+/* reference implementation, adapted from madness */
+template <typename aT, typename bT, typename cT>
+SCOPE
 void mTxmq(size_type dimi, size_type dimj, size_type dimk,
-           cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
+           cT* __restrict__ c, const aT* a, const bT* b, ssize_type ldb=-1) {
+  if (dimi == dimj*dimj && dimj == blockDim.x && dimk == blockDim.y) {
+    return mTxmq_xyz(dimi, dimj, dimk, c, a, b, ldb);
+  }
   if (ldb == -1) ldb=dimj;
   /* trivial 2D implementation for devices */
   if (threadIdx.z == 0) {
