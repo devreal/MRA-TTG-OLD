@@ -271,23 +271,11 @@ namespace mra {
     }
 
     SCOPE value_type& operator[](size_type i) {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+      return m_ptr[offset(i)];
     }
 
-    SCOPE const value_type& operator[](size_type i) const {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+    SCOPE const_value_type& operator[](size_type i) const {
+      return m_ptr[offset(i)];
     }
 
     template <typename...Args>
@@ -426,7 +414,7 @@ namespace mra {
     }
 
     /* array-style flattened access */
-    SCOPE const value_type& operator[](size_type i) const {
+    SCOPE const_value_type& operator[](size_type i) const {
       return m_ptr[i];
     }
 
