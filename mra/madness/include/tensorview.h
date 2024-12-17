@@ -167,6 +167,7 @@ namespace mra {
   public:
     using view_type = TensorViewT;
     using value_type = typename view_type::value_type;
+    using const_value_type = typename view_type::const_value_type;
 
     SCOPE static constexpr Dimension ndim() { return TensorViewT::ndim(); }
 
@@ -197,6 +198,16 @@ namespace mra {
           last_level_op_helper(std::forward<Fn>(fn), std::index_sequence<Is...>{}, args..., i);
         }
       }
+    }
+
+    size_type offset(size_type i) const {
+      size_type offset = 0;
+      size_type idx    = i;
+      for (int d = ndim()-1; d >= 0; --d) {
+        offset += ((idx%m_slices[d].count)+m_slices[d].start)*m_slices[d].stride;
+        idx    /= m_slices[d].count;
+      }
+      return offset;
     }
 
   public:
@@ -260,23 +271,11 @@ namespace mra {
     }
 
     SCOPE value_type& operator[](size_type i) {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+      return m_ptr[offset(i)];
     }
 
-    SCOPE const value_type& operator[](size_type i) const {
-      size_type offset = 0;
-      size_type idx    = i;
-      for (int d = ndim()-1; d >= 0; --d) {
-        offset += m_slices[d].start + (idx%m_slices[d].count)*m_slices[d].stride;
-        idx    /= m_slices[d].count;
-      }
-      return m_ptr[offset];
+    SCOPE const_value_type& operator[](size_type i) const {
+      return m_ptr[offset(i)];
     }
 
     template <typename...Args>
@@ -333,7 +332,7 @@ namespace mra {
   template<typename T, Dimension NDIM>
   class TensorView {
   public:
-    using value_type = std::decay_t<T>;
+    using value_type = T;
     using const_value_type = std::add_const_t<value_type>;
     SCOPE static constexpr Dimension ndim() { return NDIM; }
     using dims_array_t = std::array<size_type, ndim()>;
@@ -390,7 +389,7 @@ namespace mra {
     SCOPE TensorView& operator=(TensorView<T, NDIM>&& other) = default;
 
     SCOPE size_type size() const {
-      return std::reduce(&m_dims[0], &m_dims[ndim()-1], 1, std::multiplies<size_type>{});
+      return std::reduce(&m_dims[0], &m_dims[ndim()], 1, std::multiplies<size_type>{});
     }
 
     SCOPE size_type dim(Dimension d) const {
@@ -415,7 +414,7 @@ namespace mra {
     }
 
     /* array-style flattened access */
-    SCOPE const value_type& operator[](size_type i) const {
+    SCOPE const_value_type& operator[](size_type i) const {
       return m_ptr[i];
     }
 
@@ -441,7 +440,7 @@ namespace mra {
     /* access host-side elements */
     template<typename... Dims>
     requires(std::is_integral_v<Dims>&&...)
-    SCOPE value_type operator()(Dims... idxs) const {
+    SCOPE const_value_type operator()(Dims... idxs) const {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
       // let's hope the compiler will hoist this out of loops
@@ -456,7 +455,7 @@ namespace mra {
       return m_ptr;
     }
 
-    SCOPE const value_type* data() const {
+    SCOPE const_value_type* data() const {
       return m_ptr;
     }
 

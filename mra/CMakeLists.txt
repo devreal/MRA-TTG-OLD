@@ -25,3 +25,9 @@ if (HAVE_CUDA)
   target_link_libraries(mra-device-cuda-parsec PUBLIC MADworld ttg-parsec)
 
 endif (HAVE_CUDA)
+
+# test to verify that tensor slices work
+add_executable(tensor-test
+               madness/tests/tensor_test.cc)
+target_compile_definitions(tensor-test PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
+target_link_libraries(tensor-test PUBLIC MADworld ttg-parsec)
