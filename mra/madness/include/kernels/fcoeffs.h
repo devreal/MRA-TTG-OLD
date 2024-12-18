@@ -40,7 +40,7 @@ namespace mra {
       bool *is_leaf,
       T thresh)
     {
-      bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      bool is_t0 = (0 == thread_id());
       const size_type K2NDIM = std::pow(K, NDIM);
       const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       /* reconstruct tensor views from pointers

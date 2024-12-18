@@ -29,7 +29,7 @@ namespace mra {
       Key<NDIM> key,
       size_type K)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       const size_type K2NDIM = std::pow(K, NDIM);
 
       SHARED TensorView<T, NDIM> nA, nB, nR, workspace, r1, r2, r;

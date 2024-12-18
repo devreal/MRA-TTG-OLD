@@ -38,8 +38,7 @@ namespace mra {
     SCOPE void distancesq(const Coordinate<T,1>& p, const TensorView<T,1>& q, T* rsq, size_type N) {
         const T x = p(0);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             rsq[i] = xx*xx;
         }
@@ -57,8 +56,7 @@ namespace mra {
         const T x = p(0);
         const T y = p(1);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             rsq[i] = xx*xx + yy*yy;
@@ -79,8 +77,7 @@ namespace mra {
         const T y = p(1);
         const T z = p(2);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             T zz = q(2,i) - z;
