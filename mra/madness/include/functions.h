@@ -94,33 +94,48 @@ namespace mra {
 #endif // __CUDA_ARCH__
     }
 
+
+    namespace detail {
+      /**
+       * Reduce the contributions of each calling thread in a block into a single value.
+       * On the host, we simply copy the result into the output value.
+       * This requires block_size() shared memory.
+       */
+      template <typename T>
+      SCOPE void reduce(const T input, T* output) {
+#ifdef __CUDA_ARCH__
+        extern __shared__ T sdata[];
+
+        size_type tid = thread_id();
+        sdata[tid] = input;
+        __syncthreads();
+
+        for (size_type s = block_size() / 2; s > 0; s >>= 1) {
+            if (tid < s) {
+                sdata[tid] += sdata[tid + s];
+            }
+            __syncthreads();
+        }
+
+        if (tid == 0) {
+            *output = sdata[0];
+        }
+#else  // __CUDA_ARCH__
+        *output = input;
+#endif // __CUDA_ARCH__
+      }
+    }
+
     template <typename T, Dimension NDIM, typename accumulatorT>
     SCOPE void sumabssq(const TensorView<T, NDIM>& a, accumulatorT* sum) {
-#ifdef __CUDA_ARCH__
-      size_type tid = threadIdx.x + threadIdx.y + threadIdx.z;
       accumulatorT s = 0.0;
-      /* play it safe: set sum to zero before the atomic increments */
-      if (tid == 0) { *sum = 0.0; }
-      /* wait for thread 0 */
-      SYNCTHREADS();
-      /* every thread computes a partial sum (likely 1 element only) */
-      foreach_idx(a, [&](size_type i) mutable {
-        accumulatorT x = a[i];
+      /* every thread computes a partial sum */
+      foreach_idx(a, [&](auto... idx) mutable {
+        accumulatorT x = a(idx...);
         s += x*x;
       });
-      /* accumulate thread-partial results into sum
-       * if we had shared memory we could use that here but for now run with atomics
-       * NOTE: needs CUDA architecture 6.0 or higher */
-      atomicAdd_block(sum, s);
+      detail::reduce(s, sum);
       SYNCTHREADS();
-#else  // __CUDA_ARCH__
-      accumulatorT s = 0.0;
-      foreach_idx(a, [&](size_type i) mutable {
-        accumulatorT x = a[i];
-        s += x*x;
-      });
-      *sum = s;
-#endif // __CUDA_ARCH__
     }
 
 

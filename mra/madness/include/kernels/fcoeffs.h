@@ -194,12 +194,13 @@ namespace mra {
      */
     size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     /* launch one block per child */
-    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, 0, stream,
-      (D, gldata, fns, key, N, K, tmp,
-       phibar_view, hgT_view, coeffs_view,
-       is_leaf_scratch, thresh));
+    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, numthreads*sizeof(T), stream,
+      (D, gldata, fns, key, N, K, tmp, phibar_view.data(),
+      coeffs_view.data(), hgT_view.data(),
+      is_leaf_scratch, thresh));
     checkSubmit();
   }
 

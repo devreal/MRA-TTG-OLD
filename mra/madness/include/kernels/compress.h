@@ -118,8 +118,9 @@ namespace mra {
   {
     size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
-    CALL_KERNEL(detail::compress_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(detail::compress_kernel, N, thread_dims, numthreads*sizeof(T), stream,
       (key, N, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
     checkSubmit();
   }
