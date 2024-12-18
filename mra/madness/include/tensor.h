@@ -11,21 +11,26 @@
 #include <madness/world/world.h>
 
 #include "tensorview.h"
+#include "sparsity.h"
 
 namespace mra {
 
-  template<typename T, Dimension NDIM, class Allocator = std::allocator<T>>
+  template<typename T, Dimension NDIM, template<size_type> class SparsityT = Dense, class Allocator = std::allocator<T>>
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
     using allocator_type = Allocator;
-    using view_type = TensorView<value_type, NDIM>;
+    using view_type = TensorView<value_type, NDIM, SparsityT>;
     using const_view_type = std::add_const_t<TensorView<value_type, NDIM>>;
     using buffer_type = ttg::Buffer<value_type, allocator_type>;
+    using sparsity_type = SparsityT<sizeof(T)>;
+    using tensor_type = Tensor<T, NDIM, SparsityT, Allocator>;
 
     static constexpr Dimension ndim() { return NDIM; }
 
     using dims_array_t = std::array<size_type, ndim()>;
+
+    SCOPE static constexpr bool is_sparse() { return !std::is_same_v<sparsity_type, Dense>; }
 
     //template<typename Archive>
     //friend madness::archive::ArchiveSerializeImpl<Archive, Tensor>;
@@ -33,7 +38,9 @@ namespace mra {
   private:
     using ttvalue_type = ttg::TTValue<Tensor<T, NDIM, Allocator>>;
     dims_array_t m_dims = {0};
+    sparsity_type m_sparsity;
     buffer_type  m_buffer;
+    mutable value_type  *m_sparsity_stage = nullptr;
 
     // (Re)allocate the tensor memory
     void realloc() {
@@ -45,21 +52,29 @@ namespace mra {
       return std::array{((void)Is, dim)...};
     }
 
+    size_type buffer_size() const {
+      return size() + m_sparsity.num_values();
+    }
+
   public:
     Tensor() = default;
 
     /* generic */
+    template<typename SparsityU = SparsityT>
+    requires(std::is_same_v<SparsityU, Dense>)
     explicit Tensor(size_type dim)
     : ttvalue_type()
     , m_dims(create_dims_array(dim, std::make_index_sequence<NDIM>{}))
-    , m_buffer(size())
+    , m_sparsity(dim),
+    , m_buffer(buffer_size())
     { }
 
-    template<typename... Dims, typename = std::enable_if_t<(sizeof...(Dims) > 1)>>
-    Tensor(Dims... dims)
+    template<typename... Dims, typename = std::enable_if_t<(sizeof...(Dims) > 0)>>
+    Tensor(size_type d0, Dims... dims)
     : ttvalue_type()
-    , m_dims({static_cast<size_type>(dims)...})
-    , m_buffer(size())
+    , m_dims({d0, static_cast<size_type>(dims)...})
+    , m_sparsity(d0),
+    , m_buffer(buffer_size())
     {
       static_assert(sizeof...(Dims) == NDIM,
                     "Number of arguments does not match number of Dimensions.");
@@ -68,24 +83,32 @@ namespace mra {
     Tensor(const std::array<size_type, NDIM>& dims)
     : ttvalue_type()
     , m_dims(dims)
-    , m_buffer(size())
+    , m_sparsity(dims[0]),
+    , m_buffer(buffer_size())
     {
       // TODO: make this static_assert (clang 14 doesn't get it)
       assert(dims.size() == NDIM);
                     //"Number of arguments does not match number of Dimensions.");
     }
 
+    ~Tensor() {
+      if constexpr (is_sparse()) {
+        if (m_sparsity_stage != nullptr) {
+          Allocator().deallocate(m_sparsity_stage, m_sparsity.num_values());
+        }
+      }
+    }
 
-    Tensor(Tensor<T, NDIM, Allocator>&& other) = default;
+    Tensor(tensor_type&& other) = default;
 
-    Tensor& operator=(Tensor<T, NDIM, Allocator>&& other) = default;
+    Tensor& operator=(tensor_type&& other) = default;
 
     /* Disable copy construction.
      * There is no way we can copy data from anywhere else but the host memory space
      * so let's not even try. */
-    Tensor(const Tensor<T, NDIM, Allocator>& other) = delete;
+    Tensor(const tensor_type& other) = delete;
 
-    Tensor& operator=(const Tensor<T, NDIM, Allocator>& other) = delete;
+    Tensor& operator=(const tensor_type& other) = delete;
 
     size_type size() const {
       return std::reduce(&m_dims[0], &m_dims[ndim()], 1, std::multiplies<size_type>{});
@@ -101,14 +124,6 @@ namespace mra {
 
     const auto& buffer() const {
       return m_buffer;
-    }
-
-    value_type* data() {
-      return m_buffer.host_ptr();
-    }
-
-    const value_type* data() const {
-      return m_buffer.host_ptr();
     }
 
     /* returns a view for the current memory space
@@ -129,15 +144,54 @@ namespace mra {
 
     template <typename Archive>
     void serialize(Archive &ar) {
-      ar &m_dims &m_buffer;
+      ar &m_dims & m_sparsity &m_buffer;
     }
 
     template <typename Archive>
     void serialize(Archive &ar, const unsigned int) {
       serialize(ar);
     }
+
+    void transfer_to_device(ttg::device::Stream stream) const {
+      if constexpr (is_sparse()) {
+        /* TODO: fix allocation */
+        m_sparsity_stage = Allocator().allocate(m_sparsity.num_values());
+        sparsity_type sparsity(m_sparsity_stage, m_dims[0]);
+        sparsity = m_sparsity;
+        /* TODO: encapsulate this */
+        cudaMemcpyAsync(m_buffer.current_device_ptr(), m_sparsity_stage, m_sparsity.num_values(), cudaMemcpyHostToDevice, stream);
+      }
+    }
+
+    void transfer_to_host(ttg::device::Stream stream) const {
+      if constexpr (is_sparse()) {
+        /* TODO: fix allocation */
+        m_sparsity_stage = Allocator().allocate(m_sparsity.num_values());
+        sparsity_type sparsity(m_sparsity_stage, m_dims[0]);
+        /* TODO: encapsulate this */
+        cudaMemcpyAsync(m_sparsity_stage, m_buffer.current_device_ptr(), m_sparsity.num_values(), cudaMemcpyDeviceToHost, stream);
+      }
+    }
+
+    void complete_transfer() const {
+      if constexpr (is_sparse()) {
+        Allocator().deallocate(m_sparsity_stage, m_sparsity.num_values());
+        m_sparsity_stage = nullptr;
+      }
+    }
   };
 
+  /**
+   * Convenience type aliases for sparse and dense tensors.
+   */
+  template<typename T, Dimension NDIM>
+  using SparseTensor = Tensor<T, NDIM, Sparsity>;
+  template<typename T, Dimension NDIM>
+  using DenseTensor = Tensor<T, NDIM, Dense>;
+
+  /**
+   * Output operator for tensors.
+   */
   template <typename tensorT>
   requires(tensorT::is_tensor)
   std::ostream&

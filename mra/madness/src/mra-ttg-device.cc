@@ -48,7 +48,6 @@ auto make_project(
   /* create a non-owning buffer for domain and capture it */
   auto fn = [&, N, K, thresh, gl = mra::GLbuffer<T>()]
             (const mra::Key<NDIM>& key) -> TASKTYPE {
-    using tensor_type = typename mra::Tensor<T, NDIM+1>;
     using key_type = typename mra::Key<NDIM>;
     using node_type = typename mra::FunctionsReconstructedNode<T, NDIM>;
     node_type result(key, N); // empty for fast-paths, no need to zero out
@@ -95,7 +94,7 @@ auto make_project(
          */
         // allocate tensor
         result = node_type(key, N, K);
-        tensor_type& coeffs = result.coeffs();
+        auto& coeffs = result.coeffs();
 
         /* global function data */
         // TODO: need to make our own FunctionData with dynamic K

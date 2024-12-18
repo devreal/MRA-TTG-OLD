@@ -153,7 +153,7 @@ namespace mra {
 
 
   // fwd-decl
-  template<typename T, Dimension NDIM>
+  template<typename T, Dimension NDIM, typename SparsityT>
   class TensorView;
 
   template<typename TensorViewT>
@@ -324,22 +324,36 @@ namespace mra {
 
 
 
-  template<typename T, Dimension NDIM>
+  template<typename T, Dimension NDIM, typename SparsityT>
   class TensorView {
   public:
     using value_type = T;
     using const_value_type = std::add_const_t<value_type>;
+    using sparsity_type = SparsityT;
+    using tensorview_type = TensorView<T, NDIM, SparsityT>;
     SCOPE static constexpr Dimension ndim() { return NDIM; }
     using dims_array_t = std::array<size_type, ndim()>;
     SCOPE static constexpr bool is_tensor() { return true; }
+    SCOPE static constexpr bool is_sparse() { return !std::is_same_v<sparsity_type, Dense>; }
 
   protected:
 
     template<size_type I, typename... Dims>
     SCOPE size_type offset_impl(size_type idx, Dims... idxs) const {
-      size_type offset = idx*std::reduce(&m_dims[I+1], &m_dims[ndim()], 1, std::multiplies<size_type>{});
-      if constexpr (sizeof...(Dims) > 0) {
-        return offset + offset_impl<I+1>(std::forward<Dims>(idxs)...);
+      if constexpr (I == 0 && is_sparse()) {
+        if (m_sparsity.is_zero(idx)) {
+          /* no entry, return zero */
+          return 0;
+        } else {
+          /* adjust the index based on which entries are allocated */
+          idx = m_sparsity.offset(idx);
+        }
+      }
+      if constexpr (sizeof...(idxs) == 0) {
+        return idx;
+      } else {
+        return idx*std::reduce(&m_dims[I+1], &m_dims[ndim()], 1, std::multiplies<size_type>{})
+              + offset_impl<I+1>(std::forward<Dims>(idxs)...);
       }
       return offset;
     }
@@ -350,7 +364,8 @@ namespace mra {
     template<typename... Dims>
     SCOPE explicit TensorView(T *ptr, Dims... dims)
     : m_dims({dims...})
-    , m_ptr(ptr)
+    , m_sparsity(ptr, m_dims[0]),
+    , m_ptr(ptr + m_sparsity.num_values())
     {
       static_assert(sizeof...(Dims) == NDIM || sizeof...(Dims) == 1,
                     "Number of arguments does not match number of Dimensions. "
@@ -362,7 +377,8 @@ namespace mra {
 
     SCOPE explicit TensorView(T *ptr, const dims_array_t& dims)
     : m_dims(dims)
-    , m_ptr(ptr)
+    , m_sparsity(ptr, m_dims[0]),
+    , m_ptr(ptr + m_sparsity.num_values())
     { }
 
     template<typename S, typename... Dims>
@@ -425,21 +441,31 @@ namespace mra {
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(!std::is_const_v<std::remove_reference_t<T>> && sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
-    SCOPE value_type& operator()(Dims... idxs) {
+    requires(!std::is_const_v<std::remove_reference_t<T>> && sizeof...(Dims) == NDIM-1 && (std::is_integral_v<Dims>&&...))
+    SCOPE value_type& operator()(size_type dim0, Dims... dims) {
+      if constexpr (is_sparse()) {
+        if (m_sparsity.is_zero(dim0)) {
+          THROW("Non-const access to a sparse element!");
+        }
+      }
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      return m_ptr[offset(std::forward<Dims>(idxs)...)];
+      return m_ptr[offset(dim0, std::forward<Dims>(dims)...)];
     }
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
-    SCOPE const_value_type operator()(Dims... idxs) const {
+    requires(sizeof...(Dims) == NDIM-1 && (std::is_integral_v<Dims>&&...))
+    SCOPE value_type operator()(size_type dim0, Dims... dims) const {
+      if constexpr (is_sparse()) {
+        if (m_sparsity.is_zero(dim0)) {
+          return T(0);
+        }
+      }
       // let's hope the compiler will hoist this out of loops
       if (m_ptr == nullptr) {
         return T(0);
       } else {
-        return m_ptr[offset(std::forward<Dims>(idxs)...)];
+        return m_ptr[offset(dim0, std::forward<Dims>(dims)...)];
       }
     }
 
@@ -447,10 +473,15 @@ namespace mra {
      * Return a TensorView<T, (NDIM-M)> to a subview using the provided first M indices.
      */
     template<typename... Dims>
-    requires(sizeof...(Dims) < NDIM && (std::is_integral_v<Dims>&&...))
-    SCOPE TensorView<T, NDIM-sizeof...(Dims)> operator()(Dims... idxs) const {
-      constexpr const Dimension noffs = sizeof...(Dims);
+    requires(sizeof...(Dims) < NDIM-1 && (std::is_integral_v<Dims>&&...))
+    SCOPE TensorView<T, NDIM-sizeof...(Dims)-1> operator()(size_type dim0, Dims... idxs) const {
+      constexpr const Dimension noffs = sizeof...(Dims)+1;
       constexpr const Dimension ndim = NDIM-noffs;
+      if constexpr (is_sparse()) {
+        if (m_sparsity.is_zero(dim0)) {
+          return TensorView<T, ndim>();
+        }
+      }
       size_type offset = offset_impl<0>(std::forward<Dims>(idxs)...);
       std::array<size_type, ndim> dims;
       for (Dimension i = 0; i < ndim; ++i) {
@@ -481,7 +512,17 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator=(const value_type& value) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      foreach_idx(*this, [&](size_type i){ this->operator[](i) = value; });
+      if constexpr(!is_sparse()) {
+        // dense tensor
+        foreach_idx(*this, [&](size_type i){ this->operator[](i) = value; });
+      } else {
+        // handle sparsity
+        foreach_idx(*this, [&](auto dim0, auto... dims){
+          if (m_sparsity.is_nonzero(dim0)) {
+            this->operator()(dim0, dims...) = value;
+          }
+        });
+      }
       return *this;
     }
 
@@ -490,15 +531,28 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     SCOPE TensorView& operator*=(const value_type& value) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
-      foreach_idx(*this, [&](size_type i){ this->operator[](i) *= value; });
+      if constexpr(!is_sparse()) {
+        // dense tensor
+        foreach_idx(*this, [&](size_type i){ this->operator[](i) *= value; });
+      } else {
+        // handle sparsity
+        foreach_idx(*this, [&](size_type dim0, auto... dims){
+          if (m_sparsity.is_nonzero(dim0)) {
+            this->operator()(dim0, dims...) *= value;
+          }
+        });
+      }
       return *this;
     }
 
     /// Copy into patch
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
-    SCOPE TensorView& operator=(const TensorView<T, NDIM>& other) {
+    SCOPE TensorView& operator=(const TensorView<T, NDIM, SparsityT>& other) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
+      if constexpr (is_sparse() || other.is_sparse()) {
+        THROW("TensorView sparse copy not yet supported");
+      }
       if (other.m_ptr == nullptr) {
         foreach_idx(*this, [&](size_type i){ this->operator[](i) = 0; });
       } else {
@@ -512,17 +566,20 @@ namespace mra {
     /// Host: assumes this operation is called by a single CPU thread
     template<typename TensorViewT>
     SCOPE TensorView& operator=(const TensorSlice<TensorViewT>& other) {
+      static_assert(!is_sparse(), "Slices not yet supported with sparse tensors");
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       foreach_idx(*this, [&](size_type i){ this->operator[](i) = other[i]; });
       return *this;
     }
 
     SCOPE TensorSlice<TensorView> operator()(const std::array<Slice, NDIM>& slices) {
+      static_assert(!is_sparse(), "Slices not yet supported with sparse tensors");
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return TensorSlice<TensorView>(*this, slices);
     }
 
     SCOPE TensorSlice<TensorView> get_slice(const std::array<Slice, NDIM>& slices) {
+      static_assert(!is_sparse(), "Slices not yet supported with sparse tensors");
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return TensorSlice<TensorView>(*this, slices);
     }
@@ -563,8 +620,23 @@ namespace mra {
     /// End for forward iteration through elements in row-major order --- this is convenient but not efficient
     const const_iterator<ndim()> end() const { return const_iterator<ndim()>(size(), *this); }
 
+    /**
+     * Whether the given index is non-zero.
+     */
+    constexpr bool is_nonzero(size_type idx) const {
+      return m_sparsity.is_nonzero(idx);
+    }
+
+    /**
+     * Whether the given index is allocated.
+     */
+    constexpr bool is_allocated(size_type idx) const {
+      return m_sparsity.is_allocated(idx);
+    }
+
   private:
     dims_array_t m_dims;
+    sparsity_type m_sparsity;
     T *m_ptr; // may be const or non-const
 
   };
