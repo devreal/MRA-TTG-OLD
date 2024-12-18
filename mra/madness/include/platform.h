@@ -3,7 +3,6 @@
 
 #include <cstdlib>
 
-
 /**
  * Utilities to achieve platform independence.
  * Provides wrappers for CUDA/HIP constructs to compile code
@@ -75,32 +74,32 @@ using Dim3 = mra::detail::dim3;
 
 #include "ttg.h" // for ttg::device::Stream
 
-/**
- * Block and thread variables for host execution.
- */
-
-/* reuse dim3 from CUDA/HIP if available*/
-#if !defined(TTG_HAVE_CUDA) && !defined(TTG_HAVE_HIP)
-struct dim3 {
-    int x, y, z;
-};
-#endif
-
-/* define our own thread layout (single thread) */
-static constexpr const dim3 threadIdx = {0, 0, 0};
-static constexpr const dim3 blockDim  = {1, 1, 1};
-static constexpr const dim3 gridDim   = {1, 1, 1};
-inline thread_local    dim3 blockIdx  = {0, 0, 0};
-
 /* point cudaStream_t to our own stream type */
 typedef ttg::device::Stream cudaStream_t;
 
 #endif // MRA_ENABLE_HOST
 
-namespace mra::detail {
-  SCOPE inline bool is_team_lead() {
-    return (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+#if !defined(__CUDA_ARCH__)
+namespace mra {
+  /* define our own thread layout (single thread) */
+  static constexpr const detail::dim3 threadIdx = {0, 0, 0};
+  static constexpr const detail::dim3 blockDim  = {1, 1, 1};
+  static constexpr const detail::dim3 gridDim   = {1, 1, 1};
+  inline thread_local    detail::dim3 blockIdx  = {0, 0, 0};
+} // namespace mra
+#endif // !__CUDA_ARCH__
+
+/**
+ * Function returning the thread ID in a flat ID space.
+ */
+namespace mra {
+  DEVSCOPE int thread_id() {
+    return blockDim.x * ((blockDim.y * threadIdx.z) + threadIdx.y) + threadIdx.x;
   }
-} // namespace mra::detail
+
+  DEVSCOPE int block_size() {
+    return blockDim.x * blockDim.y * blockDim.z;
+  }
+} // namespace mra
 
 #endif // MRA_DEVICE_PLATFORM_H

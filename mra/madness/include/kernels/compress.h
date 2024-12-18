@@ -36,7 +36,7 @@ namespace mra {
       T* d_sumsq,
       const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       {   // Collect child coeffs and leaf info
         /* construct tensors */
         const size_type K2NDIM    = std::pow(  K,NDIM);
@@ -84,7 +84,7 @@ namespace mra {
       T* d_sumsq,
       const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type K2NDIM    = std::pow(  K,NDIM);
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;

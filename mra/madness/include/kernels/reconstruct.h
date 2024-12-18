@@ -34,7 +34,7 @@ namespace mra {
       const T* from_parent_ptr,
       std::array<T*, Key<NDIM>::num_children()>& r_arr)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       SHARED TensorView<T, NDIM> s, tmp_node;
       SHARED TensorView<T, NDIM> node, from_parent; // TODO: make const
@@ -83,7 +83,7 @@ namespace mra {
       const T* from_parent_ptr,
       std::array<T*, Key<NDIM>::num_children()> r_arr)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       const size_type K2NDIM    = std::pow(  K,NDIM);
 

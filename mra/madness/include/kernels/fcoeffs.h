@@ -51,6 +51,25 @@ namespace mra {
       bool *is_leaf,
       T thresh)
     {
+      bool is_t0 = (0 == thread_id());
+      const size_type K2NDIM = std::pow(K, NDIM);
+      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
+      /* reconstruct tensor views from pointers
+      * make sure we have the values at the same offset (0) as in kernel 1 */
+      SHARED TensorView<T, NDIM> values, r, child_values, workspace, coeffs;
+      SHARED TensorView<T, 2   > hgT, x_vec, x, phibar;
+      if (is_t0) {
+        values       = TensorView<T, NDIM>(&tmp[0       ], 2*K);
+        r            = TensorView<T, NDIM>(&tmp[TWOK2NDIM+0*K2NDIM], K);
+        child_values = TensorView<T, NDIM>(&tmp[TWOK2NDIM+1*K2NDIM], K);
+        workspace    = TensorView<T, NDIM>(&tmp[TWOK2NDIM+2*K2NDIM], K);
+        x_vec        = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM], NDIM, K2NDIM);
+        x            = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM + (NDIM*K2NDIM)], NDIM, K);
+        phibar       = TensorView<T, 2   >(phibar_ptr, K, K);
+        coeffs       = TensorView<T, NDIM>(coeffs_ptr, K);
+      }
+      SYNCTHREADS();
+
       /* check for our function */
       if ((key.level() < initial_level(f))) {
         // std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;

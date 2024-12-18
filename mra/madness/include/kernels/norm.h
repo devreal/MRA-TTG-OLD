@@ -16,7 +16,7 @@ namespace mra {
       size_type blockid,
       size_type K)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       SHARED TensorView<T, NDIM> n;
       if (is_t0) {
         n = TensorView<T, NDIM>(node, 2*K);
