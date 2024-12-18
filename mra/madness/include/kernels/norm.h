@@ -61,8 +61,9 @@ namespace mra {
     cudaStream_t stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
-    CALL_KERNEL(detail::norm_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(detail::norm_kernel, N, thread_dims, numthreads*sizeof(T), stream,
         (in.data(), result_norms.data(), child_norms, N, K, key));
     checkSubmit();
   }
