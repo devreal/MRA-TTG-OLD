@@ -107,8 +107,8 @@ namespace mra {
       /* wait for thread 0 */
       SYNCTHREADS();
       /* every thread computes a partial sum (likely 1 element only) */
-      foreach_idx(a, [&](auto... idx) mutable {
-        accumulatorT x = a(idx...);
+      foreach_idx(a, [&](size_type i) mutable {
+        accumulatorT x = a[i];
         s += x*x;
       });
       /* accumulate thread-partial results into sum
@@ -118,8 +118,8 @@ namespace mra {
       SYNCTHREADS();
 #else  // __CUDA_ARCH__
       accumulatorT s = 0.0;
-      foreach_idx(a, [&](auto... idx) mutable {
-        accumulatorT x = a(idx...);
+      foreach_idx(a, [&](size_type i) mutable {
+        accumulatorT x = a[i];
         s += x*x;
       });
       *sum = s;
@@ -145,16 +145,16 @@ namespace mra {
 
     template<typename T>
     SCOPE void print(const T& t) {
-      foreach_idx(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
+      foreach_idxs(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
       SYNCTHREADS();
     }
 
     template<typename T>
     SCOPE void print(const T& t, const char* loc, const char *name) {
       if constexpr (T::ndim() == 3) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       } else if constexpr (T::ndim() == 2) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       }
       SYNCTHREADS();
     }
