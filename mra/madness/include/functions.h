@@ -135,7 +135,7 @@ namespace mra {
       SYNCTHREADS();
       /* every thread computes a partial sum (likely 1 element only) */
       foreach_idx(a, [&](size_type i) mutable {
-        accumulatorT x = a[i];
+        accumulatorT x = a(i);
         s += x*x;
       });
       detail::reduce(s, sum);
