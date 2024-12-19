@@ -450,6 +450,15 @@ namespace mra {
       return *this;
     }
 
+    /// Add another tensor
+    /// Device: assumes this operation is called by all threads in a block, synchronizes
+    /// Host: assumes this operation is called by a single CPU thread
+    SCOPE TensorView& operator+=(const TensorView<T, NDIM>& value) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
+      foreach_idx(*this, [&](auto... args){ this->operator()(args...) += value(args...); });
+      return *this;
+    }
+
     /// Copy into patch
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
