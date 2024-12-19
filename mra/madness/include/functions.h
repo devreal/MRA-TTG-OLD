@@ -6,6 +6,8 @@
 #include "key.h"
 #include "tensorview.h"
 
+#include <algorithm>
+
 namespace mra {
 
 
@@ -99,27 +101,43 @@ namespace mra {
       /**
        * Reduce the contributions of each calling thread in a block into a single value.
        * On the host, we simply copy the result into the output value.
-       * This requires block_size() shared memory.
+       * This requires block_size() elements in shared memory.
+       * The block size can be controlled explicitly in case not all threads
+       * contribute values.
        */
       template <typename T>
-      SCOPE void reduce(const T input, T* output) {
+      SCOPE void reduce_block(const T input, T* output, size_type blocksize = block_size()) {
 #ifdef __CUDA_ARCH__
         extern __shared__ T sdata[];
-
         size_type tid = thread_id();
         sdata[tid] = input;
-        __syncthreads();
+        SYNCTHREADS();
 
-        for (size_type s = block_size() / 2; s > 0; s >>= 1) {
-            if (tid < s) {
-                sdata[tid] += sdata[tid + s];
-            }
-            __syncthreads();
+        /* handle odd number of elements */
+        if (blocksize % 2 && blocksize > 1) {
+          if (tid == 0) {
+            sdata[0] += sdata[blocksize - 1];
+          }
+          SYNCTHREADS();
+        }
+
+        for (size_type s = blocksize / 2; s > 0; s /= 2) {
+          if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+          }
+          SYNCTHREADS();
+          /* handle odd sizes */
+          if (s % 2 == 1 && s > 1 && tid == 0) {
+            /* have thread 0 fold in the last (odd) element */
+            sdata[0] += sdata[s-1];
+            /* no need to synchronize here, thread 0 will just continue above */
+          }
         }
 
         if (tid == 0) {
             *output = sdata[0];
         }
+        SYNCTHREADS();
 #else  // __CUDA_ARCH__
         *output = input;
 #endif // __CUDA_ARCH__
@@ -135,19 +153,10 @@ namespace mra {
       SYNCTHREADS();
       /* every thread computes a partial sum (likely 1 element only) */
       foreach_idx(a, [&](size_type i) mutable {
-        accumulatorT x = a(i);
-        s += x*x;
-      });
-      detail::reduce(s, sum);
-      SYNCTHREADS();
-#else  // __CUDA_ARCH__
-      accumulatorT s = 0.0;
-      foreach_idx(a, [&](size_type i) mutable {
         accumulatorT x = a[i];
         s += x*x;
       });
-      *sum = s;
-#endif // __CUDA_ARCH__
+      detail::reduce_block(s, sum, std::min(a.size(), static_cast<size_type>(block_size())));
     }
 
 
