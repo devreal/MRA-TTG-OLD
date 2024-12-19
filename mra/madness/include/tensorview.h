@@ -201,7 +201,7 @@ namespace mra {
       }
     }
 
-    size_type offset(size_type i) const {
+    SCOPE size_type offset(size_type i) const {
       size_type offset = 0;
       size_type idx    = i;
       for (int d = ndim()-1; d >= 0; --d) {
