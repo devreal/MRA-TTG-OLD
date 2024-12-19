@@ -130,7 +130,7 @@ namespace mra {
     SCOPE void sumabssq(const TensorView<T, NDIM>& a, accumulatorT* sum) {
       accumulatorT s = 0.0;
       /* every thread computes a partial sum */
-      foreach_idx(a, [&](auto... idx) mutable {
+      foreach_idx(a, [&](size_type i) mutable {
         accumulatorT x = a(idx...);
         s += x*x;
       });
@@ -157,16 +157,16 @@ namespace mra {
 
     template<typename T>
     SCOPE void print(const T& t) {
-      foreach_idx(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
+      foreach_idxs(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
       SYNCTHREADS();
     }
 
     template<typename T>
     SCOPE void print(const T& t, const char* loc, const char *name) {
       if constexpr (T::ndim() == 3) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       } else if constexpr (T::ndim() == 2) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       }
       SYNCTHREADS();
     }

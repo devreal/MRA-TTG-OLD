@@ -41,11 +41,12 @@ namespace mra {
         /* construct tensors */
         const size_type K2NDIM    = std::pow(  K,NDIM);
         const size_type TWOK2NDIM = std::pow(2*K,NDIM);
-        SHARED TensorView<T,NDIM> s, d, p, workspace;
+        SHARED TensorView<T,NDIM> s, d, p;
         SHARED TensorView<T,2> hgT;
+        SHARED T* workspace;
         if (is_t0) {
           s = TensorView<T,NDIM>(&tmp[0], 2*K);
-          workspace = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
+          workspace = &tmp[TWOK2NDIM];
           d = TensorView<T,NDIM>(result_ptr, 2*K);
           p = TensorView<T,NDIM>(p_ptr, K);
           hgT = TensorView<T,2>(hgT_ptr, 2*K);
