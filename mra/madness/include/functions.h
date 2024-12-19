@@ -131,7 +131,7 @@ namespace mra {
       accumulatorT s = 0.0;
       /* every thread computes a partial sum */
       foreach_idx(a, [&](size_type i) mutable {
-        accumulatorT x = a(idx...);
+        accumulatorT x = a(i);
         s += x*x;
       });
       detail::reduce(s, sum);
