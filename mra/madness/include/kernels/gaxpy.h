@@ -14,7 +14,7 @@ namespace mra {
       const T* nodeA, const T* nodeB, T* nodeR,
       const T scalarA, const T scalarB, size_type K)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       SHARED TensorView<T, NDIM> nR;
       SHARED TensorView<const T, NDIM> nA, nB;
       if (is_t0) {

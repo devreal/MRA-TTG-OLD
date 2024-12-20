@@ -16,7 +16,7 @@ namespace mra {
       size_type blockid,
       size_type K)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       SHARED TensorView<T, NDIM> n;
       if (is_t0) {
         n = TensorView<T, NDIM>(node, 2*K);
@@ -61,8 +61,9 @@ namespace mra {
     cudaStream_t stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
-    CALL_KERNEL(detail::norm_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(detail::norm_kernel, N, thread_dims, numthreads*sizeof(T), stream,
         (in.data(), result_norms.data(), child_norms, N, K, key));
     checkSubmit();
   }

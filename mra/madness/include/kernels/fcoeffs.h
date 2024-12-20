@@ -40,7 +40,7 @@ namespace mra {
       bool *is_leaf,
       T thresh)
     {
-      bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      bool is_t0 = (0 == thread_id());
       const size_type K2NDIM = std::pow(K, NDIM);
       const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       /* reconstruct tensor views from pointers
@@ -168,9 +168,10 @@ namespace mra {
      */
     size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     /* launch one block per child */
-    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, numthreads*sizeof(T), stream,
       (D, gldata, fns, key, N, K, tmp, phibar_view.data(),
       coeffs_view.data(), hgT_view.data(),
       is_leaf_scratch, thresh));
