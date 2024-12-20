@@ -55,7 +55,7 @@ namespace mra {
     const T scalarB,
     size_type N,
     size_type K,
-    cudaStream_t stream)
+    ttg::device::Stream stream)
   {
     size_type max_threads = std::min(2*K, 2*MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);

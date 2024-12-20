@@ -16,6 +16,13 @@ if(CMAKE_CUDA_COMPILER)
 endif(CMAKE_CUDA_COMPILER)
 set(HAVE_CUDA ${CMAKE_CUDA_COMPILER} CACHE BOOL "True if we can compile .cu files")
 
+check_language(HIP)
+if(CMAKE_HIP_COMPILER)
+  enable_language(HIP)
+  set(TTG_ENABLE_HIP ON)
+endif(CMAKE_HIP_COMPILER)
+set(HAVE_HIP ${CMAKE_HIP_COMPILER} CACHE BOOL "True if we can compile .hip files")
+
 # don't bother with Boost
 set(TTG_FETCH_BOOST OFF)
 set(TTG_PARSEC_USE_BOOST_SERIALIZATION OFF)

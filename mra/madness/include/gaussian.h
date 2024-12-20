@@ -61,16 +61,16 @@ namespace mra {
             assert(x.dim(0) == NDIM);
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
             size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
             for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
                 values[i] = fac * std::exp(-expnt*values[i]);
             }
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
             for (size_type i = 0; i < N; ++i) {
                 values[i] = fac * std::exp(-expnt*values[i]);
             }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
         }
 
         SCOPE Level initial_level() const {

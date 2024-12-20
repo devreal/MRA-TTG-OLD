@@ -39,38 +39,38 @@ namespace mra {
     template <typename T>
     SCOPE void distancesq(const Coordinate<T,1>& p, const TensorView<T,1>& q, T* rsq, size_type N) {
         const T x = p(0);
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
         for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             rsq[i] = xx*xx;
         }
         SYNCTHREADS();
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
         for (size_type i=0; i<N; i++) {
             T xx = q(0,i) - x;
             rsq[i] = xx*xx;
         }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
     }
 
     template <typename T>
     SCOPE void distancesq(const Coordinate<T,2>& p, const TensorView<T,2>& q, T* rsq, size_type N) {
         const T x = p(0);
         const T y = p(1);
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
         for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             rsq[i] = xx*xx + yy*yy;
         }
         SYNCTHREADS();
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
         for (size_type i=0; i<N; i++) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             rsq[i] = xx*xx + yy*yy;
         }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
     }
 
     template <typename T>
@@ -78,7 +78,7 @@ namespace mra {
         const T x = p(0);
         const T y = p(1);
         const T z = p(2);
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
         for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
@@ -86,14 +86,14 @@ namespace mra {
             rsq[i] = xx*xx + yy*yy + zz*zz;
         }
         SYNCTHREADS();
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
         for (size_type i=0; i<N; i++) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             T zz = q(2,i) - z;
             rsq[i] = xx*xx + yy*yy + zz*zz;
         }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
     }
 
 
@@ -107,7 +107,7 @@ namespace mra {
        */
       template <typename T>
       SCOPE void reduce_block(const T input, T* output, size_type blocksize = block_size()) {
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
         extern __shared__ T sdata[];
         size_type tid = thread_id();
         sdata[tid] = input;
@@ -138,9 +138,9 @@ namespace mra {
             *output = sdata[0];
         }
         SYNCTHREADS();
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
         *output = input;
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
       }
     }
 
@@ -163,16 +163,16 @@ namespace mra {
     /// Compute Frobenius norm ... still needs specializing for complex
     template <typename T, Dimension NDIM, typename accumulatorT = std::decay_t<T>>
     SCOPE accumulatorT normf(const TensorView<T, NDIM>& a) {
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
       __shared__ accumulatorT sum;
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
       accumulatorT sum;
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
       sumabssq(a, &sum);
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
       /* wait for all threads to contribute */
       SYNCTHREADS();
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
       return std::sqrt(sum);
     }
 
