@@ -114,7 +114,7 @@ namespace mra {
     T* tmp,
     T* d_sumsq,
     const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
-    cudaStream_t stream)
+    ttg::device::Stream stream)
   {
     size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
