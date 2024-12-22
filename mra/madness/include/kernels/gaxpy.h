@@ -10,39 +10,38 @@ namespace mra {
   namespace detail {
     template <typename T, Dimension NDIM>
     DEVSCOPE void gaxpy_kernel_impl(
-      const T* nodeA, const T* nodeB, T* nodeR,
-      const T scalarA, const T scalarB, size_type K)
+      const TensorView<T, NDIM> nodeA,
+      const TensorView<T, NDIM> nodeB,
+      TensorView<T, NDIM> nodeR,
+      const T scalarA,
+      const T scalarB,
+      size_type K)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
-      SHARED TensorView<T, NDIM> nR;
-      SHARED TensorView<const T, NDIM> nA, nB;
-      if (is_t0) {
-        nA = TensorView<const T, NDIM>(nodeA, 2*K);
-        nB = TensorView<const T, NDIM>(nodeB, 2*K);
-        nR = TensorView<T, NDIM>(nodeR, 2*K);
-      }
-      SYNCTHREADS();
-
-      /* compressed form */
-      foreach_idx(nA, [&](auto... idx) {
-        nR(idx...) = scalarA*nA(idx...) + scalarB*nB(idx...);
-        // std::cout << "scalarA: " << scalarA << ", scalarB: " << scalarB << nR(idx...) << std::endl;
+      foreach_idx(nodeR, [&](size_type i) {
+        nodeR[i] = scalarA*nodeA[i] + scalarB*nodeB[i];
       });
-
     }
 
     template <typename T, Dimension NDIM>
     GLOBALSCOPE void gaxpy_kernel(
-      const T* nodeA, const T* nodeB, T* nodeR,
-      const T scalarA, const T scalarB,
-      size_type N, size_type K, const Key<NDIM>& key)
+      const TensorView<T, NDIM+1> nodeA_view,
+      const TensorView<T, NDIM+1> nodeB_view,
+      TensorView<T, NDIM+1> nodeR_view,
+      const T scalarA,
+      const T scalarB,
+      size_type N,
+      size_type K,
+      const Key<NDIM>& key)
     {
+      SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR;
       const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
-        gaxpy_kernel_impl<T, NDIM>(nullptr == nodeA ? nullptr : &nodeA[TWOK2NDIM*blockid],
-                                   nullptr == nodeB ? nullptr : &nodeB[TWOK2NDIM*blockid],
-                                   &nodeR[TWOK2NDIM*blockid],
-                                   scalarA, scalarB, K);
+        if (is_team_lead()) {
+          nodeA = nodeA_view(blockid);
+          nodeB = nodeB_view(blockid);
+          nodeR = nodeR_view(blockid);
+        }
+        gaxpy_kernel_impl<T, NDIM>(nodeA, nodeB, nodeR, scalarA, scalarB, K);
       }
     }
   } // namespace detail
@@ -63,7 +62,7 @@ namespace mra {
     Dim3 thread_dims = Dim3(K, K, 1);
 
     CALL_KERNEL(detail::gaxpy_kernel, N, thread_dims, 0, stream,
-      (funcA.data(), funcB.data(), funcR.data(), scalarA, scalarB, N, K, key));
+      (funcA, funcB, funcR, scalarA, scalarB, N, K, key));
     checkSubmit();
   }
 
