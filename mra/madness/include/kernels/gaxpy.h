@@ -10,9 +10,9 @@ namespace mra {
   namespace detail {
     template <typename T, Dimension NDIM>
     DEVSCOPE void gaxpy_kernel_impl(
-      const TensorView<T, NDIM> nodeA,
-      const TensorView<T, NDIM> nodeB,
-      TensorView<T, NDIM> nodeR,
+      const TensorView<T, NDIM>& nodeA,
+      const TensorView<T, NDIM>& nodeB,
+      TensorView<T, NDIM>& nodeR,
       const T scalarA,
       const T scalarB,
       size_type K)
