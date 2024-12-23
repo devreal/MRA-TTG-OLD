@@ -383,7 +383,9 @@ namespace mra {
     { }
 
     SCOPE TensorView(TensorView<T, NDIM>&& other) = default;
-    SCOPE TensorView(const TensorView<T, NDIM>& other) = delete;
+    SCOPE TensorView(const TensorView<T, NDIM>& other) = default;
+
+    SCOPE ~TensorView() = default;
 
     SCOPE TensorView& operator=(TensorView<T, NDIM>&& other) = default;
 
