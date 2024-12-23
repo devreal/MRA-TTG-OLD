@@ -8,6 +8,7 @@
 #include "platform.h"
 #include "kernels/fcube.h"
 #include "kernels/transform.h"
+#include "maxk.h"
 
 namespace mra {
 
@@ -97,7 +98,9 @@ namespace mra {
     }
 
     template<typename Fn, typename T, Dimension NDIM>
-    GLOBALSCOPE void fcoeffs_kernel(
+    GLOBALSCOPE void
+    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
+    fcoeffs_kernel(
       const Domain<NDIM>& D,
       const T* gldata,
       const Fn* fns,
@@ -147,7 +150,6 @@ namespace mra {
                             &is_leaf[fnid], thresh);
       }
     }
-
   } // namespace detail
 
   /**
@@ -174,7 +176,10 @@ namespace mra {
      * Computation on functions is embarassingly parallel and no
      * synchronization is required.
      */
-    Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
+
     /* launch one block per child */
     CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, 0, stream,
       (D, gldata, fns, key, N, K, tmp,

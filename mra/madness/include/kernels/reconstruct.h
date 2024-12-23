@@ -4,6 +4,7 @@
 
 #include "types.h"
 #include "key.h"
+#include "maxk.h"
 #include "tensorview.h"
 #include "platform.h"
 #include "kernels/child_slice.h"
@@ -33,18 +34,20 @@ namespace mra {
       const T* from_parent_ptr,
       std::array<T*, Key<NDIM>::num_children()>& r_arr)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
-      SHARED TensorView<T, NDIM> s, workspace, tmp_node;
+      SHARED TensorView<T, NDIM> s, tmp_node;
       SHARED TensorView<T, NDIM> node, from_parent; // TODO: make const
       SHARED TensorView<T, 2> hg;
+      SHARED T* workspace;
       if (is_t0) {
         node        = TensorView<T, NDIM>(node_ptr, 2*K);
         s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
         tmp_node    = TensorView<T, NDIM>(&tmp_ptr[1*TWOK2NDIM], 2*K);
-        workspace   = TensorView<T, NDIM>(&tmp_ptr[2*TWOK2NDIM], 2*K);
         hg          = TensorView<T, 2>(hg_ptr, 2*K);
         from_parent = TensorView<T, NDIM>(from_parent_ptr, K);
+        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
+        workspace   = &tmp_ptr[TWOK2NDIM];
       }
       SYNCTHREADS();
       s = 0.0;
@@ -68,7 +71,9 @@ namespace mra {
 
 
     template<typename T, Dimension NDIM>
-    GLOBALSCOPE void reconstruct_kernel(
+    GLOBALSCOPE void
+    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
+    reconstruct_kernel(
       Key<NDIM> key,
       size_type N,
       size_type K,
@@ -78,7 +83,7 @@ namespace mra {
       const T* from_parent_ptr,
       std::array<T*, Key<NDIM>::num_children()> r_arr)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       const size_type K2NDIM    = std::pow(  K,NDIM);
 
@@ -110,8 +115,8 @@ namespace mra {
     T* tmp,
     cudaStream_t stream)
   {
-    /* runs on a single block */
-    Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
     CALL_KERNEL(detail::reconstruct_kernel, N, thread_dims, 0, stream,
       (key, N, K, node.data(), tmp, hg.data(), from_parent.data(), r_arr));
     checkSubmit();

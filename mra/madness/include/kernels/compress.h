@@ -7,6 +7,7 @@
 #include "tensorview.h"
 #include "kernels/child_slice.h"
 #include "kernels/transform.h"
+#include "maxk.h"
 
 #include <array>
 
@@ -35,16 +36,17 @@ namespace mra {
       T* d_sumsq,
       const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs)
     {
-      const bool is_t0 = 0 == (threadIdx.x + threadIdx.y + threadIdx.z);
+      const bool is_t0 = (0 == thread_id());
       {   // Collect child coeffs and leaf info
         /* construct tensors */
         const size_type K2NDIM    = std::pow(  K,NDIM);
         const size_type TWOK2NDIM = std::pow(2*K,NDIM);
-        SHARED TensorView<T,NDIM> s, d, p, workspace;
+        SHARED TensorView<T,NDIM> s, d, p;
         SHARED TensorView<T,2> hgT;
+        SHARED T* workspace;
         if (is_t0) {
           s = TensorView<T,NDIM>(&tmp[0], 2*K);
-          workspace = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
+          workspace = &tmp[TWOK2NDIM];
           d = TensorView<T,NDIM>(result_ptr, 2*K);
           p = TensorView<T,NDIM>(p_ptr, K);
           hgT = TensorView<T,2>(hgT_ptr, 2*K);
@@ -70,6 +72,7 @@ namespace mra {
     }
 
     template<typename T, Dimension NDIM>
+    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
     GLOBALSCOPE void compress_kernel(
       Key<NDIM> key,
       size_type N,
@@ -81,7 +84,7 @@ namespace mra {
       T* d_sumsq,
       const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
     {
-      const bool is_t0 = (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+      const bool is_t0 = (0 == thread_id());
       const size_type K2NDIM    = std::pow(  K,NDIM);
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
@@ -113,9 +116,11 @@ namespace mra {
     const std::array<const T*, Key<NDIM>::num_children()>& in_ptrs,
     cudaStream_t stream)
   {
-    Dim3 thread_dims = Dim3(K, K, 1); // figure out how to consider register usage
+    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
+    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
-    CALL_KERNEL(detail::compress_kernel, N, thread_dims, 0, stream,
+    CALL_KERNEL(detail::compress_kernel, N, thread_dims, numthreads*sizeof(T), stream,
       (key, N, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
     checkSubmit();
   }

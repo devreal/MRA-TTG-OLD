@@ -6,6 +6,8 @@
 #include "key.h"
 #include "tensorview.h"
 
+#include <algorithm>
+
 namespace mra {
 
 
@@ -38,8 +40,7 @@ namespace mra {
     SCOPE void distancesq(const Coordinate<T,1>& p, const TensorView<T,1>& q, T* rsq, size_type N) {
         const T x = p(0);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             rsq[i] = xx*xx;
         }
@@ -57,8 +58,7 @@ namespace mra {
         const T x = p(0);
         const T y = p(1);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             rsq[i] = xx*xx + yy*yy;
@@ -79,8 +79,7 @@ namespace mra {
         const T y = p(1);
         const T z = p(2);
 #ifdef __CUDA_ARCH__
-        size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-        for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
+        for (size_type i = thread_id(); i < N; i += block_size()) {
             T xx = q(0,i) - x;
             T yy = q(1,i) - y;
             T zz = q(2,i) - z;
@@ -97,33 +96,63 @@ namespace mra {
 #endif // __CUDA_ARCH__
     }
 
+
+    namespace detail {
+      /**
+       * Reduce the contributions of each calling thread in a block into a single value.
+       * On the host, we simply copy the result into the output value.
+       * This requires block_size() elements in shared memory.
+       * The block size can be controlled explicitly in case not all threads
+       * contribute values.
+       */
+      template <typename T>
+      SCOPE void reduce_block(const T input, T* output, size_type blocksize = block_size()) {
+#ifdef __CUDA_ARCH__
+        extern __shared__ T sdata[];
+        size_type tid = thread_id();
+        sdata[tid] = input;
+        SYNCTHREADS();
+
+        /* handle odd number of elements */
+        if (blocksize % 2 && blocksize > 1) {
+          if (tid == 0) {
+            sdata[0] += sdata[blocksize - 1];
+          }
+          SYNCTHREADS();
+        }
+
+        for (size_type s = blocksize / 2; s > 0; s /= 2) {
+          if (tid < s) {
+            sdata[tid] += sdata[tid + s];
+          }
+          SYNCTHREADS();
+          /* handle odd sizes */
+          if (s % 2 == 1 && s > 1 && tid == 0) {
+            /* have thread 0 fold in the last (odd) element */
+            sdata[0] += sdata[s-1];
+            /* no need to synchronize here, thread 0 will just continue above */
+          }
+        }
+
+        if (tid == 0) {
+            *output = sdata[0];
+        }
+        SYNCTHREADS();
+#else  // __CUDA_ARCH__
+        *output = input;
+#endif // __CUDA_ARCH__
+      }
+    }
+
     template <typename T, Dimension NDIM, typename accumulatorT>
     SCOPE void sumabssq(const TensorView<T, NDIM>& a, accumulatorT* sum) {
-#ifdef __CUDA_ARCH__
-      size_type tid = threadIdx.x + threadIdx.y + threadIdx.z;
       accumulatorT s = 0.0;
-      /* play it safe: set sum to zero before the atomic increments */
-      if (tid == 0) { *sum = 0.0; }
-      /* wait for thread 0 */
-      SYNCTHREADS();
-      /* every thread computes a partial sum (likely 1 element only) */
-      foreach_idx(a, [&](auto... idx) mutable {
-        accumulatorT x = a(idx...);
+      /* every thread computes a partial sum */
+      foreach_idx(a, [&](size_type i) mutable {
+        accumulatorT x = a[i];
         s += x*x;
       });
-      /* accumulate thread-partial results into sum
-       * if we had shared memory we could use that here but for now run with atomics
-       * NOTE: needs CUDA architecture 6.0 or higher */
-      atomicAdd_block(sum, s);
-      SYNCTHREADS();
-#else  // __CUDA_ARCH__
-      accumulatorT s = 0.0;
-      foreach_idx(a, [&](auto... idx) mutable {
-        accumulatorT x = a(idx...);
-        s += x*x;
-      });
-      *sum = s;
-#endif // __CUDA_ARCH__
+      detail::reduce_block(s, sum, std::min(a.size(), static_cast<size_type>(block_size())));
     }
 
 
@@ -145,16 +174,16 @@ namespace mra {
 
     template<typename T>
     SCOPE void print(const T& t) {
-      foreach_idx(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
+      foreach_idxs(t, [&](auto... idx){ printf("[%lu %lu %lu] %f\n", idx..., t(idx...)); });
       SYNCTHREADS();
     }
 
     template<typename T>
     SCOPE void print(const T& t, const char* loc, const char *name) {
       if constexpr (T::ndim() == 3) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       } else if constexpr (T::ndim() == 2) {
-        foreach_idx(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
+        foreach_idxs(t, [&](auto... idx){ printf("%s: %s[%lu %lu] %p %e\n", loc, name, idx..., &t(idx...), t(idx...)); });
       }
       SYNCTHREADS();
     }

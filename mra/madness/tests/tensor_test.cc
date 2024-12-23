@@ -9,6 +9,8 @@ int main(int argc, char **argv) {
 
   ttg::initialize(argc, argv);
 
+  { // block needed for the destructors to be called before finalize
+
   using matrix_type = mra::Tensor<double, 2>;
   using matrixview_type = typename matrix_type::view_type;
   using tensor_type = mra::Tensor<double, 3>;
@@ -20,6 +22,7 @@ int main(int argc, char **argv) {
   assert(m2.size() == 16);
 
   matrixview_type m2v = m2.current_view();
+  assert(m2v.size() == m2.size());
 
   /* explicit iteration */
   for (int i = 0; i < m2v.dim(0); ++i) {
@@ -105,7 +108,6 @@ int main(int argc, char **argv) {
   for (int i = 0; i < t2v.dim(0); ++i) {
     for (int j = 0; j < t2v.dim(1); ++j) {
       for (int k = 0; k < t2v.dim(2); ++k) {
-        printf("t2v(%d, %d, %d) %f\n", i, j, k, t2v(i, j, k));
         if (i >= 10 && j < 10 && k >= 10) {
           assert(t2v(i, j, k) == 1.0);
         } else {
@@ -114,6 +116,12 @@ int main(int argc, char **argv) {
       }
     }
   }
+
+  ttg::execute();
+  ttg::fence();
+
+  }
+
   ttg::finalize();
 
 }
