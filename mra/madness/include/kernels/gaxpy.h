@@ -34,7 +34,6 @@ namespace mra {
       const Key<NDIM>& key)
     {
       SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR;
-      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
       for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
         if (is_team_lead()) {
           nodeA = nodeA_view(blockid);
