@@ -106,4 +106,4 @@ jobs:
       working-directory: ${{github.workspace}}/build
       shell: bash
       # Execute the build.  You can specify a specific target with "--target <NAME>"
-      run: ccache -p && ccache -z && cmake --build . --target bspmm-cuda-parsec testing_dpotrf_cuda-parsec chain-ttg-cuda-parsec && ccache -s
+      run: ccache -p && ccache -z && cmake --build . && ccache -s
