@@ -9,8 +9,8 @@ else (TARGET ttg)
 include(FetchContent)
 FetchContent_Declare(
       ttg
-      GIT_REPOSITORY      https://github.com/devreal/ttg.git
-      GIT_TAG             64260166a82921371e7de9dd445c0a96b2768aab
+      GIT_REPOSITORY      https://github.com/TESSEOrg/ttg.git
+      GIT_TAG             26172b095ae1fdbb1299086da4193561b41a89f1
   )
 
 #FetchContent_Declare(
