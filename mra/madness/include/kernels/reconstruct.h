@@ -29,25 +29,14 @@ namespace mra {
       Key<NDIM> key,
       size_type K,
       const TensorView<T, NDIM>& node,
-      T* tmp_ptr,
       const TensorView<T, 2>& hg,
       const TensorView<T, NDIM>& from_parent,
+      TensorView<T, NDIM>& s,
+      TensorView<T, NDIM>& tmp_node,
+      T* workspace,
       std::array<T*, Key<NDIM>::num_children()>& r_arr)
     {
-      const bool is_t0 = (0 == thread_id());
-      const size_type TWOK2NDIM = std::pow(2*K,NDIM);
-
-      SHARED TensorView<T, NDIM> s, tmp_node;
-      SHARED T* workspace;
-      if (is_t0) {
-        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
-        tmp_node    = TensorView<T, NDIM>(&tmp_ptr[1*TWOK2NDIM], 2*K);
-        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
-        workspace   = &tmp_ptr[TWOK2NDIM];
-      }
-      SYNCTHREADS();
       s = 0.0;
-
       tmp_node = node;
       auto child_slice = get_child_slice<NDIM>(key, K, 0);
       if (key.level() != 0) tmp_node(child_slice) = from_parent;
@@ -73,10 +62,10 @@ namespace mra {
       Key<NDIM> key,
       size_type N,
       size_type K,
-      TensorView<T, NDIM+1>& node_view,
+      TensorView<T, NDIM+1> node_view,
       T* tmp_ptr,
-      const TensorView<T, 2>& hg,
-      const TensorView<T, NDIM+1>& from_parent_view,
+      const TensorView<T, 2> hg,
+      const TensorView<T, NDIM+1> from_parent_view,
       std::array<T*, Key<NDIM>::num_children()> r_arr)
     {
       const bool is_t0 = (0 == thread_id());
@@ -85,22 +74,27 @@ namespace mra {
 
       /* pick the r's for this function */
       SHARED std::array<T*, Key<NDIM>::num_children()> block_r_arr;
+      SHARED TensorView<T, NDIM> s, tmp_node;
+      SHARED T* workspace;
+      SHARED TensorView<T, NDIM> node, from_parent;
+
       size_type blockId = blockIdx.x;
       if (is_t0) {
-        for (size_type i = 0; i < Key<NDIM>::num_children(); ++i) {
-          block_r_arr[i] = &r_arr[i][K2NDIM*blockId];
-        }
+        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
+        tmp_node    = TensorView<T, NDIM>(&tmp_ptr[1*TWOK2NDIM], 2*K);
+        workspace   = &tmp_ptr[2*TWOK2NDIM];
       }
 
-      SHARED TensorView<T, NDIM> node, from_parent;
       for (size_type fnid = blockId; fnid < N; fnid += gridDim.x){
-        if(is_team_lead()){
+        if (is_t0) {
           node = node_view(fnid);
           from_parent = from_parent_view(fnid);
+          for (size_type i = 0; i < Key<NDIM>::num_children(); ++i) {
+            block_r_arr[i] = &r_arr[i][K2NDIM*fnid];
+          }
         }
         SYNCTHREADS();
-        reconstruct_kernel_impl(key, K, node, tmp_ptr + fnid*reconstruct_tmp_size<NDIM>(K),
-                              hg, from_parent, block_r_arr);
+        reconstruct_kernel_impl(key, K, node, hg, from_parent, s, tmp_node, workspace, block_r_arr);
       }
     }
   } // namespace detail
