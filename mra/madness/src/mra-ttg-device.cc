@@ -303,18 +303,15 @@ static auto make_compress(
 
         /* assemble input array and submit kernel */
         //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
-        auto get_ptr = [](const auto& in) {
-          return in.empty() ? nullptr : in.coeffs().buffer().current_device_ptr();
-        };
-        auto input_ptrs = std::array{get_ptr(in0), get_ptr(in1), get_ptr(in2), get_ptr(in3),
-                                     get_ptr(in4), get_ptr(in5), get_ptr(in6), get_ptr(in7)};
+        auto input_views = std::array{in0.coeffs().current_view(), in1.coeffs().current_view(), in2.coeffs().current_view(), in3.coeffs().current_view(),
+                                      in4.coeffs().current_view(), in5.coeffs().current_view(), in6.coeffs().current_view(), in7.coeffs().current_view()};
 
         auto coeffs_view = p.coeffs().current_view();
         auto rcoeffs_view = d.current_view();
         auto hgT_view = hgT.current_view();
 
         submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
+                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_views,
                               ttg::device::current_stream());
 
         /* wait for kernel and transfer sums back */
