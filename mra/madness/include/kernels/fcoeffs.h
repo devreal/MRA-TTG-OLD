@@ -121,22 +121,16 @@ namespace mra {
       if (is_team_lead()) {
         const size_type K2NDIM    = std::pow(K, NDIM);
         const size_type TWOK2NDIM = std::pow(2*K, NDIM);
-        size_type tmp_offset = blockIdx.x*fcoeffs_tmp_size<NDIM>(K);
-        values       = TensorView<T, NDIM>(&tmp[tmp_offset], 2*K);
-        tmp_offset  += TWOK2NDIM;
-        r0           = TensorView<T, NDIM>(&tmp[tmp_offset], K);
-        tmp_offset  += K2NDIM;
-        r1           = TensorView<T, NDIM>(&tmp[tmp_offset], 2*K);
-        tmp_offset  += TWOK2NDIM;
-        child_values = TensorView<T, NDIM>(&tmp[tmp_offset], K);
-        tmp_offset  += K2NDIM;
-        x_vec        = TensorView<T, 2   >(&tmp[tmp_offset], NDIM, K2NDIM);
-        tmp_offset  += NDIM*K2NDIM;
-        x            = TensorView<T, 2   >(&tmp[tmp_offset], NDIM, K);
-        tmp_offset  += NDIM*K;
-        workspace    = &tmp[tmp_offset];
+        T* block_tmp = &tmp[blockIdx.x*fcoeffs_tmp_size<NDIM>(K)];
+        values       = TensorView<T, NDIM>(&block_tmp[0], 2*K);
+        r0           = TensorView<T, NDIM>(&block_tmp[TWOK2NDIM], K);
+        r1           = TensorView<T, NDIM>(&block_tmp[TWOK2NDIM+K2NDIM], 2*K);
+        child_values = TensorView<T, NDIM>(&block_tmp[2*TWOK2NDIM+K2NDIM], K);
+        x_vec        = TensorView<T, 2   >(&block_tmp[2*TWOK2NDIM+2*K2NDIM], NDIM, K2NDIM);
+        x            = TensorView<T, 2   >(&block_tmp[2*TWOK2NDIM+(NDIM+2)*K2NDIM], NDIM, K);
+        workspace    = &block_tmp[2*TWOK2NDIM+(NDIM+2)*K2NDIM+NDIM*K];
       }
-      SYNCTHREADS();
+
       /* adjust pointers for the function of each block */
       for (size_type fnid = blockIdx.x; fnid < N; fnid += gridDim.x) {
         if (is_team_lead()) {
