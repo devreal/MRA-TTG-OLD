@@ -1,28 +1,30 @@
 #include <cassert>
 #include <ttg.h>
 #include "kernels/gaxpy.h"
+#include "tensor.h"
 
 int main(int argc, char **argv) {
 
-    ttg::initialize(argc, argv);
+  ttg::initialize(argc, argv);
 
-    double scalarA = 1.0, scalarB = -1.0;
+  double scalarA = 1.0, scalarB = -1.0;
+  constexpr const mra::size_type K = 3;
 
-    double *nodeA = new double[6];
-    double *nodeB = new double[6];
-    double *nodeR = new double[6];
+  mra::Tensor<double, 2> nodeA(K), nodeB(K), nodeC(K);
+  mra::TensorView<double, 2> nodeAv = nodeA.current_view();
+  mra::TensorView<double, 2> nodeBv = nodeB.current_view();
+  mra::TensorView<double, 2> nodeCv = nodeC.current_view();
+  for (int i=0; i<nodeA.size(); ++i){
+    nodeAv[i] = i;
+    nodeBv[i] = i;
+    nodeCv[i] = 100.0;
+  }
 
-    for (int i=0; i<6; ++i){
-            nodeA[i] = i;
-            nodeB[i] = i;
-            nodeR[i] = 100.0;
-        }
+  mra::detail::gaxpy_kernel_impl<double, 2>(nodeAv, nodeBv, nodeCv, scalarA, scalarB, K);
 
-    mra::detail::gaxpy_kernel_impl<double, 2>(nodeA, nodeB, nodeR, scalarA, scalarB, 3);
-
-    for (int i = 0; i < 6; ++i) {
-        assert(nodeR[i] == 0.0);
-    }
+  for (int i=0; i<nodeA.size(); ++i){
+    assert(nodeCv[i] == 0.0);
+  }
 
   ttg::finalize();
 }
