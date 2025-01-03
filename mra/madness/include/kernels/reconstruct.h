@@ -93,13 +93,13 @@ namespace mra {
       }
 
       SHARED TensorView<T, NDIM> node, from_parent;
-      for (size_type blockid; blockid < N; blockid += gridDim.x){
+      for (size_type fnid = blockId; fnid < N; fnid += gridDim.x){
         if(is_team_lead()){
-          node = node_view(blockid);
-          from_parent = from_parent_view(blockid);
+          node = node_view(fnid);
+          from_parent = from_parent_view(fnid);
         }
         SYNCTHREADS();
-        reconstruct_kernel_impl(key, K, node, tmp_ptr + blockId*reconstruct_tmp_size<NDIM>(K),
+        reconstruct_kernel_impl(key, K, node, tmp_ptr + fnid*reconstruct_tmp_size<NDIM>(K),
                               hg, from_parent, block_r_arr);
       }
     }
