@@ -113,7 +113,7 @@ namespace mra {
     const TensorView<T, NDIM+1>& from_parent,
     const std::array<T*, mra::Key<NDIM>::num_children()>& r_arr,
     T* tmp,
-    cudaStream_t stream)
+    ttg::device::Stream stream)
   {
     size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);

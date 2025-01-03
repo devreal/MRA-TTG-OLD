@@ -58,7 +58,7 @@ namespace mra {
     const TensorView<T, NDIM+1>& in,
     TensorView<T, 1>& result_norms,
     std::array<const T*, Key<NDIM>::num_children()>& child_norms,
-    cudaStream_t stream)
+    ttg::device::Stream stream)
   {
     Dim3 thread_dims = Dim3(K, K, 1);
     size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
