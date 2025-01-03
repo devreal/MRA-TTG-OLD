@@ -15,7 +15,7 @@ namespace mra {
     template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
     SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
     {
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
       /* distribute the last three dimensions across the z, y, x dimension of the block */
       if constexpr (I == NDIM-3) {
         for (size_type i = threadIdx.z; i < t.dim(I); i += blockDim.z) {
@@ -35,7 +35,7 @@ namespace mra {
           foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
         }
       }
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
       if constexpr (I < NDIM-1) {
         for (size_type i = 0; i < t.dim(I); ++i) {
           foreach_idxs_impl<NDIM, I+1>(t, std::forward<Fn>(fn), args..., i);
@@ -45,7 +45,7 @@ namespace mra {
           fn(args..., i);
         }
       }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
       SYNCTHREADS();
     }
   } // namespace detail
@@ -62,16 +62,16 @@ namespace mra {
   template<class TensorViewT, typename Fn>
   requires(TensorViewT::is_tensor())
   SCOPE void foreach_idx(const TensorViewT& t, Fn&& fn) {
-#ifdef __CUDA_ARCH__
+#ifdef HAVE_DEVICE_ARCH
     size_type tid = threadIdx.x + blockDim.x*(threadIdx.y + (blockDim.y*threadIdx.z));
     for (size_type i = tid; i < t.size(); i += blockDim.x*blockDim.y*blockDim.z) {
       fn(i);
     }
-#else  // __CUDA_ARCH__
+#else  // HAVE_DEVICE_ARCH
     for (size_type i = 0; i < t.size(); ++i) {
       fn(i);
     }
-#endif // __CUDA_ARCH__
+#endif // HAVE_DEVICE_ARCH
   }
 
   namespace detail {

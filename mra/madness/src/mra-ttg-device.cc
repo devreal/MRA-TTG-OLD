@@ -17,9 +17,12 @@ using namespace mra; // we're lazy
 #ifdef MRA_ENABLE_HOST
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
-#else
+#elif defined(MRA_ENABLE_CUDA)
 #define TASKTYPE ttg::device::Task
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
+#define TASKTYPE ttg::device::Task
+#elif defined(MRA_ENABLE_HIP)
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
 #endif
 
 

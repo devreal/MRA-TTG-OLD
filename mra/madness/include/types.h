@@ -5,6 +5,7 @@
 #include <iostream>
 #include <cstdint>
 #include <cassert>
+#include <array>
 
 #include "platform.h"
 
