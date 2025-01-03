@@ -20,7 +20,7 @@ int main(int argc, char **argv) {
     nodeCv[i] = 100.0;
   }
 
-  mra::detail::gaxpy_kernel_impl<double, 2>(nodeAv, nodeBv, nodeCv, scalarA, scalarB, K);
+  mra::detail::gaxpy_kernel_impl<double, 2>(nodeAv, nodeBv, nodeCv, scalarA, scalarB);
 
   for (int i=0; i<nodeA.size(); ++i){
     assert(nodeCv[i] == 0.0);

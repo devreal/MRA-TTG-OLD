@@ -14,8 +14,7 @@ namespace mra {
       const TensorView<T, NDIM>& nodeB,
       TensorView<T, NDIM>& nodeR,
       const T scalarA,
-      const T scalarB,
-      size_type K)
+      const T scalarB)
     {
       foreach_idx(nodeR, [&](size_type i) {
         nodeR[i] = scalarA*nodeA[i] + scalarB*nodeB[i];
@@ -30,8 +29,7 @@ namespace mra {
       const T scalarA,
       const T scalarB,
       size_type N,
-      size_type K,
-      const Key<NDIM>& key)
+      const Key<NDIM> key)
     {
       SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR;
       for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
@@ -40,7 +38,8 @@ namespace mra {
           nodeB = nodeB_view(blockid);
           nodeR = nodeR_view(blockid);
         }
-        gaxpy_kernel_impl<T, NDIM>(nodeA, nodeB, nodeR, scalarA, scalarB, K);
+        SYNCTHREADS();
+        gaxpy_kernel_impl<T, NDIM>(nodeA, nodeB, nodeR, scalarA, scalarB);
       }
     }
   } // namespace detail
@@ -62,7 +61,7 @@ namespace mra {
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
 
     CALL_KERNEL(detail::gaxpy_kernel, N, thread_dims, 0, stream,
-      (funcA, funcB, funcR, scalarA, scalarB, N, K, key));
+      (funcA, funcB, funcR, scalarA, scalarB, N, key));
     checkSubmit();
   }
 
