@@ -50,36 +50,37 @@ namespace mra {
     LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
     multiply_kernel(
       const Domain<NDIM>& D,
-      const TensorView<T, NDIM> nodeA_view,
-      const TensorView<T, NDIM> nodeB_view,
-      TensorView<T, NDIM> nodeR_view,
+      const TensorView<T, NDIM+1> nodeA_view,
+      const TensorView<T, NDIM+1> nodeB_view,
+      TensorView<T, NDIM+1> nodeR_view,
       T* tmp,
-      const TensorView<T, 2> phiT_ptr,
-      const TensorView<T, 2> phibar_ptr,
+      const TensorView<T, 2> phiT,
+      const TensorView<T, 2> phibar,
       Key<NDIM> key,
       size_type N,
       size_type K)
     {
       SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR, r1, r2, r;
+      SHARED T* workspace;
+      size_type blockId = blockIdx.x;
       if (is_team_lead()){
         const size_type K2NDIM = std::pow(K, NDIM);
-        size_type tmp_offset = blockIdx.x*multiply_tmp_size<NDIM>(K);
-        r         = TensorView<T, NDIM>(&tmp[tmp_offset], K);
-        tmp_offset += K2NDIM;
-        r1        = TensorView<T, NDIM>(&tmp[tmp_offset], K);
-        tmp_offset += K2NDIM;
-        r2        = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+        T* block_tmp = &tmp[blockId*multiply_tmp_size<NDIM>(K)];
+        r         = TensorView<T, NDIM>(&block_tmp[       0], K);
+        r1        = TensorView<T, NDIM>(&block_tmp[  K2NDIM], K);
+        r2        = TensorView<T, NDIM>(&block_tmp[2*K2NDIM], K);
+        workspace = &block_tmp[3*K2NDIM];
       }
-      SYNCTHREADS();
-      for (size_type blockid; blockid < N; blockid += gridDim.x){
+
+      for (size_type fnid = blockId; fnid < N; fnid += gridDim.x){
         if (is_team_lead()) {
-          nodeA = nodeA_view(blockid);
-          nodeB = nodeB_view(blockid);
-          nodeR = nodeR_view(blockid);
+          nodeA = nodeA_view(fnid);
+          nodeB = nodeB_view(fnid);
+          nodeR = nodeR_view(fnid);
         }
         SYNCTHREADS();
-        multiply_kernel_impl<T, NDIM>(D, nodeA, nodeB, nodeR, r, r1, r2,
-                                    phiT_ptr, phibar_ptr, key, K);
+        multiply_kernel_impl<T, NDIM>(D, nodeA, nodeB, nodeR, r, r1, r2, workspace,
+                                      phiT, phibar, key, K);
       }
     }
   } // namespace detail
