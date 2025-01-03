@@ -30,7 +30,6 @@ namespace mra::detail {
 
 /* convenience macro to mark functions __device__ if compiling for CUDA */
 #if defined(__CUDA_ARCH__)
-#define GLOBALSCOPE __global__
 #define SCOPE __device__ __host__
 #define SYNCTHREADS() __syncthreads()
 #define DEVSCOPE __device__
@@ -38,7 +37,6 @@ namespace mra::detail {
 #define LAUNCH_BOUNDS(__NT) __launch_bounds__(__NT)
 #define HAVE_DEVICE_ARCH 1
 #elif defined(__HIPCC__)
-#define GLOBALSCOPE __global__
 #define SCOPE __device__ __host__
 #define SYNCTHREADS() __syncthreads()
 #define DEVSCOPE __device__
@@ -46,7 +44,6 @@ namespace mra::detail {
 #define LAUNCH_BOUNDS(__NT) __launch_bounds__(__NT)
 #define HAVE_DEVICE_ARCH 1
 #else // __CUDA_ARCH__
-#define GLOBALSCOPE
 #define SCOPE
 #define SYNCTHREADS() do {} while(0)
 #define DEVSCOPE inline
@@ -87,6 +84,14 @@ namespace mra::detail {
 #define THROW(s) do { printf(s); } while(0)
 #else  // __CUDA_ARCH__
 #define THROW(s) do { throw std::runtime_error(s); } while(0)
+#endif // __CUDA_ARCH__
+
+#if defined(__CUDACC__)
+#define GLOBALSCOPE __global__
+#elif defined(__HIPCC__)
+#define GLOBALSCOPE __global__
+#else  // __CUDA_ARCH__
+#define GLOBALSCOPE
 #endif // __CUDA_ARCH__
 
 #if defined(MRA_ENABLE_HOST)
