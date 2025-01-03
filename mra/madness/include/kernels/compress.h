@@ -77,9 +77,9 @@ namespace mra {
       Key<NDIM> key,
       size_type N,
       size_type K,
-      T* p_ptr,
-      T* result_ptr,
-      const T* hgT_ptr,
+      TensorView<T, NDIM+1>& p_ptr,
+      TensorView<T, NDIM+1>& result_ptr,
+      const TensorView<T, 2>& hgT_ptr,
       T* tmp,
       T* d_sumsq,
       const std::array<const T*, Key<NDIM>::num_children()> in_ptrs)
@@ -88,17 +88,25 @@ namespace mra {
       const size_type K2NDIM    = std::pow(  K,NDIM);
       const size_type TWOK2NDIM = std::pow(2*K,NDIM);
       SHARED std::array<const T*, Key<NDIM>::num_children()> block_in_ptrs;
-      int blockid = blockIdx.x;
+      int blockId = blockIdx.x;
 
       if (is_t0) {
         for (int i = 0; i < Key<NDIM>::num_children(); ++i) {
-          block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockid] : nullptr;
+          block_in_ptrs[i] = (nullptr != in_ptrs[i]) ? &in_ptrs[i][K2NDIM*blockId] : nullptr;
         }
       }
-      /* no need to sync threads here */
-      compress_kernel_impl(key, K, &p_ptr[K2NDIM*blockid], &result_ptr[TWOK2NDIM*blockid],
-                           hgT_ptr, &tmp[compress_tmp_size<NDIM>(K)*blockid], &d_sumsq[blockid],
-                           block_in_ptrs);
+
+      SHARED TensorView<T, NDIM> p, result;
+      for (size_type blockid; blockid < N; blockid += gridDim.x){
+        if (is_team_lead()){
+          p = p_ptr(blockid);
+          result = result_ptr(blockid);
+        }
+      SYNCTHREADS();
+        /* no need to sync threads here */
+      compress_kernel_impl(key, K, p.data(), result.data(), hgT_ptr.data(), &tmp[compress_tmp_size<NDIM>(K)*blockId],
+                           &d_sumsq[blockId], block_in_ptrs);
+      }
 
     }
   } // namespace detail
@@ -121,7 +129,7 @@ namespace mra {
     size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     CALL_KERNEL(detail::compress_kernel, N, thread_dims, numthreads*sizeof(T), stream,
-      (key, N, K, p_view.data(), result_view.data(), hgT_view.data(), tmp, d_sumsq, in_ptrs));
+      (key, N, K, p_view, result_view, hgT_view, tmp, d_sumsq, in_ptrs));
     checkSubmit();
   }
 

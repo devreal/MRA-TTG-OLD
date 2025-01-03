@@ -23,26 +23,15 @@ namespace mra {
       const TensorView<T, NDIM>& nodeA,
       const TensorView<T, NDIM>& nodeB,
       TensorView<T, NDIM>& nodeR,
-      T* tmp,
+      TensorView<T, NDIM>& r,
+      TensorView<T, NDIM>& r1,
+      TensorView<T, NDIM>& r2,
+      T* workspace,
       const TensorView<T, 2>& phiT,
       const TensorView<T, 2>& phibar,
       Key<NDIM> key,
       size_type K)
     {
-      const bool is_t0 = (0 == thread_id());
-      const size_type K2NDIM = std::pow(K, NDIM);
-
-      SHARED TensorView<T, NDIM> r1, r2, r;
-      SHARED T* workspace;
-
-      if (is_t0) {
-        workspace = &tmp[0];
-        r         = TensorView<T, NDIM>(&tmp[1*K2NDIM], K);
-        r1        = TensorView<T, NDIM>(&tmp[2*K2NDIM], K);
-        r2        = TensorView<T, NDIM>(&tmp[3*K2NDIM], K);
-      }
-      SYNCTHREADS();
-
       // convert coeffs to function values
       transform(nodeA, phiT, r1, workspace);
       transform(nodeB, phiT, r2, workspace);
@@ -71,7 +60,17 @@ namespace mra {
       size_type N,
       size_type K)
     {
-      SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR;
+      SHARED TensorView<T, NDIM> nodeA, nodeB, nodeR, r1, r2, r;
+      if (is_team_lead()){
+        const size_type K2NDIM = std::pow(K, NDIM);
+        size_type tmp_offset = blockIdx.x*multiply_tmp_size<NDIM>(K);
+        r         = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+        tmp_offset += K2NDIM;
+        r1        = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+        tmp_offset += K2NDIM;
+        r2        = TensorView<T, NDIM>(&tmp[tmp_offset], K);
+      }
+      SYNCTHREADS();
       for (size_type blockid; blockid < N; blockid += gridDim.x){
         if (is_team_lead()) {
           nodeA = nodeA_view(blockid);
@@ -79,7 +78,7 @@ namespace mra {
           nodeR = nodeR_view(blockid);
         }
         SYNCTHREADS();
-        multiply_kernel_impl<T, NDIM>(D, nodeA, nodeB, nodeR, &tmp[(multiply_tmp_size<NDIM>(K)*blockid)],
+        multiply_kernel_impl<T, NDIM>(D, nodeA, nodeB, nodeR, r, r1, r2,
                                     phiT_ptr, phibar_ptr, key, K);
       }
     }
