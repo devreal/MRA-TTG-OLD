@@ -14,7 +14,6 @@ namespace mra {
   namespace detail {
     template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
     SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
-    SCOPE void foreach_idxs_impl(const TensorViewT& t, Fn&& fn, Args... args)
     {
 #ifdef HAVE_DEVICE_ARCH
       /* distribute the last three dimensions across the z, y, x dimension of the block */
@@ -439,10 +438,8 @@ namespace mra {
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(std::is_integral_v<Dims>&&...)
+    requires(sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
     SCOPE const_value_type operator()(Dims... idxs) const {
-      static_assert(sizeof...(Dims) == NDIM,
-                    "Number of arguments does not match number of Dimensions.");
       // let's hope the compiler will hoist this out of loops
       if (m_ptr == nullptr) {
         return T(0);

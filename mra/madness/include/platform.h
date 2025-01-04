@@ -129,6 +129,11 @@ namespace mra {
     return 1;
 #endif // HAVE_DEVICE_ARCH
   }
+
+  SCOPE inline bool is_team_lead() {
+    return (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+  }
+
 } // namespace mra
 
 #endif // MRA_DEVICE_PLATFORM_H

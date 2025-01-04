@@ -5,6 +5,7 @@
 #include "types.h"
 #include "tensorview.h"
 #include "maxk.h"
+#include "key.h"
 
 namespace mra {
   namespace detail {

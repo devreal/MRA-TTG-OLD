@@ -147,11 +147,7 @@ namespace mra {
     template <typename T, Dimension NDIM, typename accumulatorT>
     SCOPE void sumabssq(const TensorView<T, NDIM>& a, accumulatorT* sum) {
       accumulatorT s = 0.0;
-      /* play it safe: set sum to zero before the atomic increments */
-      if (tid == 0) { *sum = 0.0; }
-      /* wait for thread 0 */
-      SYNCTHREADS();
-      /* every thread computes a partial sum (likely 1 element only) */
+      /* every thread computes a partial sum */
       foreach_idx(a, [&](size_type i) mutable {
         accumulatorT x = a[i];
         s += x*x;

@@ -9,7 +9,6 @@
 #include "kernels/fcube.h"
 #include "kernels/transform.h"
 #include "maxk.h"
-#include "maxk.h"
 
 namespace mra {
 
@@ -51,26 +50,6 @@ namespace mra {
       bool *is_leaf,
       T thresh)
     {
-      bool is_t0 = (0 == thread_id());
-      const size_type K2NDIM = std::pow(K, NDIM);
-      const size_type TWOK2NDIM = std::pow(2*K, NDIM);
-      /* reconstruct tensor views from pointers
-      * make sure we have the values at the same offset (0) as in kernel 1 */
-      SHARED TensorView<T, NDIM> values, r, child_values, coeffs;
-      SHARED TensorView<T, 2   > hgT, x_vec, x, phibar;
-      T* workspace = &tmp[TWOK2NDIM+2*K2NDIM];
-      if (is_t0) {
-        values       = TensorView<T, NDIM>(&tmp[0       ], 2*K);
-        r            = TensorView<T, NDIM>(&tmp[TWOK2NDIM+0*K2NDIM], K);
-        child_values = TensorView<T, NDIM>(&tmp[TWOK2NDIM+1*K2NDIM], K);
-        workspace    = &tmp[TWOK2NDIM+2*K2NDIM];
-        x_vec        = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM], NDIM, K2NDIM);
-        x            = TensorView<T, 2   >(&tmp[TWOK2NDIM+3*K2NDIM + (NDIM*K2NDIM)], NDIM, K);
-        phibar       = TensorView<T, 2   >(phibar_ptr, K, K);
-        coeffs       = TensorView<T, NDIM>(coeffs_ptr, K);
-      }
-      SYNCTHREADS();
-
       /* check for our function */
       if ((key.level() < initial_level(f))) {
         // std::cout << "project: key " << key << " below intial level " << initial_level(f) << std::endl;
@@ -97,13 +76,6 @@ namespace mra {
           values(child_slice) = r0;
         }
 
-        /* reallocate some of the tensorviews */
-        if (is_t0) {
-          r          = TensorView<T, NDIM>(&tmp[TWOK2NDIM], 2*K);
-          workspace  = &tmp[2*TWOK2NDIM];
-          hgT        = TensorView<T, 2>(hgT_ptr, 2*K, 2*K);
-        }
-        SYNCTHREADS();
         T fac = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5),T(NDIM*(1+key.level()))));
         values *= fac;
         // Inlined: filter<T,K,NDIM>(values,r);
@@ -160,12 +132,16 @@ namespace mra {
       }
 
       /* adjust pointers for the function of each block */
-      //size_type blockid = blockIdx.x;
-      for (size_type blockid = blockIdx.x; blockid < N; blockid += gridDim.x) {
-        fcoeffs_kernel_impl(D, gldata, fns[blockid], key, K,
-                            &tmp[(fcoeffs_tmp_size<NDIM>(K)*blockid)],
-                            phibar_ptr, coeffs_ptr+(blockid*K2NDIM),
-                            hgT_ptr, &is_leaf[blockid], thresh);
+      for (size_type fnid = blockIdx.x; fnid < N; fnid += gridDim.x) {
+        if (is_team_lead()) {
+          /* get the coefficient inputs */
+          coeffs       = coeffs_view(fnid);
+        }
+        SYNCTHREADS();
+        fcoeffs_kernel_impl(D, gldata, fns[fnid], key, K, fnid,
+                            values, r0, r1, child_values, x_vec, x, workspace,
+                            phibar_view, hgT_view, coeffs,
+                            &is_leaf[fnid], thresh);
       }
     }
   } // namespace detail
@@ -199,10 +175,10 @@ namespace mra {
     size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     /* launch one block per child */
-    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, numthreads*sizeof(T), stream,
-      (D, gldata, fns, key, N, K, tmp, phibar_view.data(),
-      coeffs_view.data(), hgT_view.data(),
-      is_leaf_scratch, thresh));
+    CALL_KERNEL(detail::fcoeffs_kernel, N, thread_dims, 0, stream,
+      (D, gldata, fns, key, N, K, tmp,
+       phibar_view, hgT_view, coeffs_view,
+       is_leaf_scratch, thresh));
     checkSubmit();
   }
 
