@@ -131,7 +131,11 @@ namespace mra {
   }
 
   SCOPE inline bool is_team_lead() {
+#if defined(HAVE_DEVICE_ARCH)
     return (0 == (threadIdx.x + threadIdx.y + threadIdx.z));
+#else  // HAVE_DEVICE_ARCH
+    return true;
+#endif // HAVE_DEVICE_ARCH
   }
 
 } // namespace mra
