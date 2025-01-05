@@ -118,15 +118,15 @@ auto make_project(
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
-        T* tmp_device = tmp_scratch.device_ptr();
+        T* tmp_ptr = tmp_scratch.device_ptr();
         bool *is_leafs_device = is_leafs_scratch.device_ptr();
         auto *f_ptr   = fb.current_device_ptr();
         auto& domain = *db.current_device_ptr();
         auto  gldata = gl.current_device_ptr();
 
         /* submit the kernel */
-        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, coeffs_view,
-                              phibar_view, hgT_view, tmp_device,
+        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, tmp_ptr,
+                              phibar_view, hgT_view, coeffs_view,
                               is_leafs_device, thresh, ttg::device::current_stream());
 
         /* wait and get is_leaf back */
@@ -306,18 +306,15 @@ static auto make_compress(
 
         /* assemble input array and submit kernel */
         //auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
-        auto get_ptr = [](const auto& in) {
-          return in.empty() ? nullptr : in.coeffs().buffer().current_device_ptr();
-        };
-        auto input_ptrs = std::array{get_ptr(in0), get_ptr(in1), get_ptr(in2), get_ptr(in3),
-                                     get_ptr(in4), get_ptr(in5), get_ptr(in6), get_ptr(in7)};
+        auto input_views = std::array{in0.coeffs().current_view(), in1.coeffs().current_view(), in2.coeffs().current_view(), in3.coeffs().current_view(),
+                                      in4.coeffs().current_view(), in5.coeffs().current_view(), in6.coeffs().current_view(), in7.coeffs().current_view()};
 
         auto coeffs_view = p.coeffs().current_view();
         auto rcoeffs_view = d.current_view();
         auto hgT_view = hgT.current_view();
 
         submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_ptrs,
+                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_views,
                               ttg::device::current_stream());
 
         /* wait for kernel and transfer sums back */

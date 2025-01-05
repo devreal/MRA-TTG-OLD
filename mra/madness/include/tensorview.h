@@ -342,12 +342,11 @@ namespace mra {
 
     template<size_type I, typename... Dims>
     SCOPE size_type offset_impl(size_type idx, Dims... idxs) const {
-      if constexpr (sizeof...(idxs) == 0) {
-        return idx;
-      } else {
-        return idx*std::reduce(&m_dims[I+1], &m_dims[ndim()], 1, std::multiplies<size_type>{})
-              + offset_impl<I+1>(std::forward<Dims>(idxs)...);
+      size_type offset = idx*std::reduce(&m_dims[I+1], &m_dims[ndim()], 1, std::multiplies<size_type>{});
+      if constexpr (sizeof...(Dims) > 0) {
+        return offset + offset_impl<I+1>(std::forward<Dims>(idxs)...);
       }
+      return offset;
     }
 
   public:
@@ -384,7 +383,9 @@ namespace mra {
     { }
 
     SCOPE TensorView(TensorView<T, NDIM>&& other) = default;
-    SCOPE TensorView(const TensorView<T, NDIM>& other) = delete;
+    SCOPE TensorView(const TensorView<T, NDIM>& other) = default;
+
+    SCOPE ~TensorView() = default;
 
     SCOPE TensorView& operator=(TensorView<T, NDIM>&& other) = default;
 
@@ -422,29 +423,23 @@ namespace mra {
 
     /* return the offset for the provided indexes */
     template<typename... Dims>
-    requires(std::is_integral_v<Dims>&&...)
+    requires(sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
     SCOPE size_type offset(Dims... idxs) const {
-      static_assert(sizeof...(Dims) == NDIM,
-                    "Number of arguments does not match number of Dimensions.");
       return offset_impl<0>(std::forward<Dims>(idxs)...);
     }
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(!std::is_const_v<std::remove_reference_t<T>> && (std::is_integral_v<Dims>&&...))
+    requires(!std::is_const_v<std::remove_reference_t<T>> && sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
     SCOPE value_type& operator()(Dims... idxs) {
-      static_assert(sizeof...(Dims) == NDIM,
-                    "Number of arguments does not match number of Dimensions.");
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return m_ptr[offset(std::forward<Dims>(idxs)...)];
     }
 
     /* access host-side elements */
     template<typename... Dims>
-    requires(std::is_integral_v<Dims>&&...)
+    requires(sizeof...(Dims) == NDIM && (std::is_integral_v<Dims>&&...))
     SCOPE const_value_type operator()(Dims... idxs) const {
-      static_assert(sizeof...(Dims) == NDIM,
-                    "Number of arguments does not match number of Dimensions.");
       // let's hope the compiler will hoist this out of loops
       if (m_ptr == nullptr) {
         return T(0);
@@ -452,6 +447,23 @@ namespace mra {
         return m_ptr[offset(std::forward<Dims>(idxs)...)];
       }
     }
+
+    /**
+     * Return a TensorView<T, (NDIM-M)> to a subview using the provided first M indices.
+     */
+    template<typename... Dims>
+    requires(sizeof...(Dims) < NDIM && (std::is_integral_v<Dims>&&...))
+    SCOPE TensorView<T, NDIM-sizeof...(Dims)> operator()(Dims... idxs) const {
+      constexpr const Dimension noffs = sizeof...(Dims);
+      constexpr const Dimension ndim = NDIM-noffs;
+      size_type offset = offset_impl<0>(std::forward<Dims>(idxs)...);
+      std::array<size_type, ndim> dims;
+      for (Dimension i = 0; i < ndim; ++i) {
+        dims[i] = m_dims[noffs+i];
+      }
+      return TensorView<T, ndim>(m_ptr+offset, dims);
+    }
+
 
     SCOPE value_type* data() {
       return m_ptr;
