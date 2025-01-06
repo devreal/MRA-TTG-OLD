@@ -17,15 +17,15 @@ namespace mra {
       const TensorView<T, NDIM>& node_left,
       const TensorView<T, NDIM>& node_center,
       const TensorView<T, NDIM>& node_right,
-      const TensorView<T, 2>& coeff_left,
-      const TensorView<T, 2>& coeff_center,
-      const TensorView<T, 2>& coeff_right,
+      const TensorView<T, 2>& op_left,
+      const TensorView<T, 2>& op_center,
+      const TensorView<T, 2>& op_right,
       TensorView<T, NDIM>& deriv,
       size_type axis)
     {
-      deriv = transform_dir(node_left, coeff_left, axis);
-      deriv += transform_dir(node_center, coeff_center, axis);
-      deriv += transform_dir(node_right, coeff_right, axis);
+      deriv = transform_dir(node_left, op_left, axis);
+      deriv += transform_dir(node_center, op_center, axis);
+      deriv += transform_dir(node_right, op_right, axis);
 
       T scale = std::sqrt(D.template get_reciprocal_width<T>(axis)*std::pow(T(2), T(key.level())));
 
@@ -49,9 +49,9 @@ namespace mra {
       const TensorView<T, NDIM>& node_left,
       const TensorView<T, NDIM>& node_center,
       const TensorView<T, NDIM>& node_right,
-      const TensorView<T, 2>& coeff_left,
-      const TensorView<T, 2>& coeff_center,
-      const TensorView<T, 2>& coeff_right,
+      const TensorView<T, 2>& op_left,
+      const TensorView<T, 2>& op_center,
+      const TensorView<T, 2>& op_right,
       TensorView<T, NDIM>& deriv,
       bool is_bdy)
       {
@@ -62,7 +62,7 @@ namespace mra {
         }
         else{
           derivative_inner<T, NDIM>(D, key, node_left, node_center, node_right,
-            coeff_left, coeff_center, coeff_right, deriv, axis);
+            op_left, op_center, op_right, deriv, axis);
         }
       }
 
@@ -73,9 +73,9 @@ namespace mra {
       const TensorView<T, NDIM+1>& node_left,
       const TensorView<T, NDIM+1>& node_center,
       const TensorView<T, NDIM+1>& node_right,
-      const TensorView<T, 2>& coeff_left,
-      const TensorView<T, 2>& coeff_center,
-      const TensorView<T, 2>& coeff_right,
+      const TensorView<T, 2>& op_left,
+      const TensorView<T, 2>& op_center,
+      const TensorView<T, 2>& op_right,
       TensorView<T, NDIM+1>& deriv,
       size_type N,
       const bool is_bdy)
@@ -89,7 +89,7 @@ namespace mra {
         }
         SYNCTHREADS();
         derivative_kernel_impl<T, NDIM>(D, node_left_view, node_center_view, node_right_view,
-          coeff_left, coeff_center, coeff_right, deriv, is_bdy);
+          op_left, op_center, op_right, deriv, is_bdy);
       }
     }
 
@@ -102,9 +102,9 @@ namespace mra {
     const TensorView<T, NDIM+1>& node_left,
     const TensorView<T, NDIM+1>& node_center,
     const TensorView<T, NDIM+1>& node_right,
-    const TensorView<T, 2>& coeff_left,
-    const TensorView<T, 2>& coeff_center,
-    const TensorView<T, 2>& coeff_right,
+    const TensorView<T, 2>& op_left,
+    const TensorView<T, 2>& op_center,
+    const TensorView<T, 2>& op_right,
     TensorView<T, NDIM+1>& deriv,
     size_type N,
     size_type K,
@@ -115,7 +115,7 @@ namespace mra {
     Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
 
     CALL_KERNEL(detail::derivative_kernel, N, thread_dims, 0, stream,
-      (D, key, node_left, node_center, node_right, coeff_left, coeff_center, coeff_right,
+      (D, key, node_left, node_center, node_right, op_left, op_center, op_right,
         deriv, N, is_bdy));
     checkSubmit();
   }

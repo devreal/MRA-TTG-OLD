@@ -31,16 +31,16 @@ SCOPE void transform(const TensorView<T, NDIM>& t,
 template <typename T, Dimension NDIM>
 SCOPE TensorView<T, NDIM> transform_dir(
   const TensorView<T, NDIM>& node,
-  const TensorView<T, 2>& coeff,
+  const TensorView<T, 2>& op,
   size_type axis) {
     if (axis == 0){
-      return inner(coeff, node, 0, axis);
+      return inner(op, node, 0, axis);
     }
     else if (axis == node.ndim()-1){
-      return inner(node, coeff, axis, 0);
+      return inner(node, op, axis, 0);
     }
     else{
-      return copy(inner(node, coeff, axis, 0).cycledim(1, axis, -1)); // copy to make contiguous
+      return copy(inner(node, op, axis, 0).cycledim(1, axis, -1)); // copy to make contiguous
     }
   }
 
