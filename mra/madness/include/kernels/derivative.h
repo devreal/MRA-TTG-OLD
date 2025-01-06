@@ -32,17 +32,19 @@ namespace mra {
       deriv *= scale;
     }
 
-    template <typename T, Dimension NDIM>
+    template <typename T, Dimension NDIM, class G1, class G2>
     DEVSCOPE void derivative_boundary(
       const T* node_left,
       const T* node_center,
       const T* node_right,
+      const G1& g1,
+      const G2& g2,
       bool axis) // axis to determine left or right boundary
     {
       //diff2b()
     }
 
-    template <typename T, Dimension NDIM>
+    template <typename T, Dimension NDIM, class G1, class G2>
     DEVSCOPE void derivative_kernel_impl(
       const Domain<NDIM>& D,
       const Key<NDIM>& key,
@@ -53,6 +55,8 @@ namespace mra {
       const TensorView<T, 2>& op_center,
       const TensorView<T, 2>& op_right,
       TensorView<T, NDIM>& deriv,
+      const G1& g1,
+      const G2& g2,
       bool is_bdy)
       {
         // if we reached here, all checks have passed, and we do the transform to compute the derivative
@@ -66,18 +70,20 @@ namespace mra {
         }
       }
 
-    template <typename T, Dimension NDIM>
+    template <typename T, Dimension NDIM, class G1, class G2>
     GLOBALSCOPE void derivative_kernel(
       const Domain<NDIM>& D,
       const Key<NDIM>& key,
-      const TensorView<T, NDIM+1>& node_left,
-      const TensorView<T, NDIM+1>& node_center,
-      const TensorView<T, NDIM+1>& node_right,
-      const TensorView<T, 2>& op_left,
-      const TensorView<T, 2>& op_center,
-      const TensorView<T, 2>& op_right,
-      TensorView<T, NDIM+1>& deriv,
+      const TensorView<T, NDIM+1> node_left,
+      const TensorView<T, NDIM+1> node_center,
+      const TensorView<T, NDIM+1> node_right,
+      const TensorView<T, 2> op_left,
+      const TensorView<T, 2> op_center,
+      const TensorView<T, 2> op_right,
+      TensorView<T, NDIM+1> deriv,
       size_type N,
+      const G1 g1,
+      const G2 g2,
       const bool is_bdy)
     {
       SHARED TensorView<T, NDIM> node_left_view, node_center_view, node_right_view;
@@ -95,7 +101,7 @@ namespace mra {
 
   } // namespace detail
 
-  template <typename T, Dimension NDIM>
+  template <typename T, Dimension NDIM, class G1, class G2>
   void submit_derivative_kernel(
     const Domain<NDIM>& D,
     const Key<NDIM>& key,
@@ -108,6 +114,8 @@ namespace mra {
     TensorView<T, NDIM+1>& deriv,
     size_type N,
     size_type K,
+    const G1& g1,
+    const G2& g2,
     const bool is_bdy,
     ttg::device::Stream stream)
   {
