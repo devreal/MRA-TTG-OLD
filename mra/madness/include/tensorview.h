@@ -505,7 +505,7 @@ namespace mra {
     SCOPE TensorView& operator+=(const TensorView<T, NDIM>& value) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       foreach_idx(*this, [&](size_type i){ this->operator[](i) += value[i]; });
-      return res;
+      return *this;
     }
 
     /// Copy into patch
