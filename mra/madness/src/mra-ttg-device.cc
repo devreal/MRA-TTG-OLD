@@ -51,7 +51,9 @@ auto make_project(
     using key_type = typename mra::Key<NDIM>;
     using node_type = typename mra::FunctionsReconstructedNode<T, NDIM>;
     node_type result(key, N); // empty for fast-paths, no need to zero out
+#ifndef MRA_ENABLE_HOST
     auto outputs = ttg::device::forward();
+#endif // MRA_ENABLE_HOST
     auto* fn_arr = fb.host_ptr();
     bool all_initial_level = true;
     for (std::size_t i = 0; i < N; ++i) {
@@ -534,14 +536,16 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
             const mra::FunctionsCompressedNode<T, NDIM>& t1,
             const mra::FunctionsCompressedNode<T, NDIM>& t2) -> TASKTYPE {
 
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
-#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
-#else
-      ttg::send<0>(key, std::forward<S>(out));
-#endif
     };
+#else
+    auto send_out = [&]<typename S>(S&& out){
+      ttg::send<0>(key, std::forward<S>(out));
+    };
+#endif
 
     //std::cout << name << " " << key << " t1 empty " << t1.empty() << " t2 empty " << t2.empty() << std::endl;
 
@@ -672,14 +676,16 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
             const mra::FunctionsReconstructedNode<T, NDIM>& t1,
             const mra::FunctionsReconstructedNode<T, NDIM>& t2) -> TASKTYPE {
 
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward();
     auto send_out = [&]<typename S>(S&& out){
-#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<0>(key, std::forward<S>(out)));
-#else
-      ttg::send<0>(key, std::forward<S>(out));
-#endif
     };
+#else
+    auto send_out = [&]<typename S>(S&& out){
+      ttg::send<0>(key, std::forward<S>(out));
+    };
+#endif
 
     if (t1.empty() || t2.empty()) {
       /* send out an empty result */
