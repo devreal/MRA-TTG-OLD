@@ -17,6 +17,7 @@ int main(int argc, char **argv) {
   for (int i=0; i<nodeA.size(); ++i){
     nodeAv[i] = i;
     nodeBv[i] = 100.0;
+    nodeCv[i] = 100.0;
   }
 
   mra::detail::cycledim<double, 2>(nodeAv, nodeBv, 1, 0, 2);
