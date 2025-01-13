@@ -34,7 +34,7 @@ namespace mra{
           newidxs[shifts[i]] = idxs_arr[i];
         }
         T val = in(idxs...);
-        auto do_assign = [&]template<std::size_t... Is>(std::index_sequence<Is...>){
+        auto do_assign = [&]<std::size_t... Is>(std::index_sequence<Is...>){
           out(newidxs[Is]...) = val;
         };
         do_assign(std::make_index_sequence<NDIM>{});
