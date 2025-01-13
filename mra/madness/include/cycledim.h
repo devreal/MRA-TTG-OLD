@@ -28,7 +28,7 @@ namespace mra{
       // assign using new index positions
       foreach_idxs(in, [&](auto... idxs){
         std::array<int, NDIM> newidxs;
-        std::array<int, NDIM> idxs_arr = {idxs...};
+        std::array<int, NDIM> idxs_arr = {static_cast<int>(idxs)...};
         /* mutate the indices */
         for (int i = 0; i < NDIM; ++i) {
           newidxs[shifts[i]] = idxs_arr[i];
