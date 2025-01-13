@@ -52,7 +52,6 @@ namespace mra{
     {
       if (k0 < 0) k0 += left.ndim();
       if (k1 < 0) k1 += right.ndim();
-      long nd = left.ndim() + right.ndim() - 2;
 
       if (k0==0 && k1==0) {
         // c[i,j] = a[k,i]*b[k,j] ... collapsing extra indices to i & j
@@ -87,25 +86,31 @@ namespace mra{
         return;
       }
 
-      // TODO
-      // long dimj = left.dim(k0);
-      // TensorIterator<Q> iter1=right.unary_iterator(1,false,false,k1);
-
-      // for (TensorIterator<T> iter0=left.unary_iterator(1,false,false,k0);
-      //         iter0._p0; ++iter0) {
-      //   T* MADNESS_RESTRICT xp0 = iter0._p0;
-      //   long s0 = iter0._s0;
-      //   for (iter1.reset(); iter1._p0; ++iter1) {
-      //     T* MADNESS_RESTRICT p0 = xp0;
-      //     Q* MADNESS_RESTRICT p1 = iter1._p0;
-      //     long s1 = iter1._s0;
-      //     resultT sum = 0;
-      //     for (long j=0; j<dimj; ++j,p0+=s0,p1+=s1) {
-      //       sum += (*p0) * (*p1);
-      //     }
-      //     *ptr++ += sum;
-      //   }
-      // }
+      // TODO: use more than the first slice of threads in z here
+      if (threadIdx.z == 0) {
+        size_type dimj = left.dim(k0);
+        auto iter1 = right.unary_iterator(1,k1);
+        T* ptr = result.ptr();
+        for (auto iter0 = left.unary_iterator(1,k0);
+             iter0.ptr() != nullptr;
+             ++iter0, ptr += iter1.size()) {
+          T* __restrict__ xp0 = iter0.ptr();
+          ssize_type s0 = iter0.s0();
+          iter1.reset();
+          for (iter1 += thread_id();
+               iter1.ptr() != nullptr;
+               iter1 += blockDim.x*blockDim.y, ptr += blockDim.x*blockDim.y) {
+            T* __restrict__ p0 = xp0;
+            T* __restrict__ p1 = iter1.ptr();
+            ssize_type s1 = iter1.s0();
+            T sum = 0;
+            for (size_type j=0; j<dimj; ++j, p0+=s0, p1+=s1) {
+              sum += (*p0) * (*p1);
+            }
+            ptr[thread_id()] += sum;
+          }
+        }
+      }
     }
   }
 }

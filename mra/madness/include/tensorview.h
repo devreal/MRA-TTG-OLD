@@ -7,6 +7,7 @@
 
 #include "types.h"
 #include "platform.h"
+#include "tensoriter.h"
 
 namespace mra {
 
@@ -403,7 +404,7 @@ namespace mra {
 
     SCOPE size_type stride(size_type d) const {
       size_type s = 1;
-      for (int i = 0; i < d; ++i) {
+      for (size_type i = d+1; i < ndim(); ++i) {
         s *= m_dims[i];
       }
       return s;
@@ -577,10 +578,13 @@ namespace mra {
     /// End for forward iteration through elements in row-major order --- this is convenient but not efficient
     const const_iterator<ndim()> end() const { return const_iterator<ndim()>(size(), *this); }
 
+    TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
+      return iterator(this, iterlevel, jdim);
+    }
+
   private:
     dims_array_t m_dims;
     T *m_ptr; // may be const or non-const
-
   };
 
   template<typename TensorViewT>
