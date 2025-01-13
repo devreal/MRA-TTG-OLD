@@ -26,7 +26,7 @@ namespace mra{
         }
       }
       // assign using new index positions
-      foreach_idxs(in, [&](size_type... idxs){
+      foreach_idxs(in, [&](auto... idxs){
         std::array<int, NDIM> newidxs;
         std::array<int, NDIM> idxs_arr = {idxs...};
         /* mutate the indices */
@@ -34,7 +34,7 @@ namespace mra{
           newidxs[shifts[i]] = idxs_arr[i];
         }
         T val = in(idxs...);
-        auto do_assign = [&]template<std::size_t... Is>(std::index_sequence_t){
+        auto do_assign = [&]template<std::size_t... Is>(std::index_sequence<Is...>){
           out(newidxs[Is]...) = val;
         };
         do_assign(std::make_index_sequence<NDIM>{});
