@@ -44,6 +44,18 @@ SCOPE TensorView<T, NDIM> transform_dir(
     }
   }
 
+template <typename T, Dimension NDIM>
+SCOPE void general_transform(
+        const TensorView<T, NDIM>& t,
+        const std::array<TensorView<T, 2>, NDIM>& c,
+        TensorView<T, NDIM>& result)
+        {
+          result = t;
+          for (size_type i = 0; i < NDIM; ++i){
+            inner(result, c[i], 0, 0);
+          }
+        }
+
 } // namespace mra
 
 #endif // MRA_TRANSFORM_H
