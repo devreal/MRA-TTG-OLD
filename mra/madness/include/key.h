@@ -129,6 +129,19 @@ namespace mra {
             for (Dimension d = 0; d < NDIM; ++d) l[d] = 2*l[d] + ((idx & (1<<d)) ? 1 : 0);
             return Key<NDIM>(n+1, l);
         }
+
+        SCOPE Key<NDIM> neighbor(const Key<NDIM>& disp){
+            std::array<Translation,NDIM> l = this->l + disp.l;
+            return Key<NDIM>(n, l);
+        }
+
+        SCOPE bool is_invalid() const {
+            return n == -1;
+        }
+
+        SCOPE bool is_valid() const {
+            return n != -1;
+        }
     };
     template <> inline SCOPE Key<1> Key<1>::parent(Level generation) const {
         generation = std::min(generation,n);
