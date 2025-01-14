@@ -23,9 +23,10 @@ namespace mra {
       TensorView<T, NDIM>& deriv,
       size_type axis)
     {
-      deriv = transform_dir(node_left, op_left, axis);
-      deriv += transform_dir(node_center, op_center, axis);
-      deriv += transform_dir(node_right, op_right, axis);
+      deriv = 0;
+      transform_dir(node_left, op_left, axis, deriv);
+      transform_dir(node_center, op_center, axis, deriv);
+      transform_dir(node_right, op_right, axis, deriv);
 
       T scale = std::sqrt(D.template get_reciprocal_width<T>(axis)*std::pow(T(2), T(key.level())));
 
