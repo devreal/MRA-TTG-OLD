@@ -48,7 +48,7 @@ SCOPE void transform_dir(
 template <typename T, Dimension NDIM>
 SCOPE void general_transform(
         const TensorView<T, NDIM>& t,
-        const std::array<TensorView<T, 2>, NDIM>& c,
+        const std::array<TensorView<T, 3>, NDIM>& c,
         TensorView<T, NDIM>& result)
         {
           result = t;

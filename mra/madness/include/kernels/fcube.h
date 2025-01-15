@@ -81,18 +81,18 @@ namespace mra{
 
 
   template <typename functorT, typename T, Dimension NDIM>
-  SCOPE
-  void fcube(const Domain<NDIM>& D,
-            const T* gldata,
-            const functorT& f,
-            const Key<NDIM>& key,
-            const T thresh,
-            // output
-            TensorView<T,3>& values,
-            size_type K,
-            // temporaries
-            TensorView<T, 2>& x,
-            TensorView<T, 2>& xvec) {
+  SCOPE void fcube(
+    const Domain<NDIM>& D,
+    const T* gldata,
+    const functorT& f,
+    const Key<NDIM>& key,
+    const T thresh,
+    // output
+    TensorView<T,3>& values,
+    size_type K,
+    // temporaries
+    TensorView<T, 2>& x,
+    TensorView<T, 2>& xvec) {
     if (is_negligible(f, D.template bounding_box<T>(key), truncate_tol(key,thresh))) {
         values = 0.0;
         /* TensorView assigment synchronizes */
