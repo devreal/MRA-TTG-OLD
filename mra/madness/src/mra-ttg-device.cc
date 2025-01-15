@@ -873,6 +873,38 @@ auto make_norm(size_type N, size_type K,
                          std::move(dispatch_tt));
 }
 
+template <typename T, Dimension NDIM, class G1, class G2>
+auto make_derivative(size_type N, size_type K,
+               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in,
+               ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
+               const G1& g1,
+               const G2& g2,
+               const size_type axis,
+               const char* name = "derivative")
+{
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> left;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> center;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> right;
+
+  auto derivative_fn = [N, K, g1, g2, axis](const mra::Key<NDIM>& key,
+                              const mra::FunctionsReconstructedNode<T, NDIM>& left,
+                              const mra::FunctionsReconstructedNode<T, NDIM>& center,
+                              const mra::FunctionsReconstructedNode<T, NDIM>& right,
+                              const mra::Tensor<T, 1>& in) -> TASKTYPE {
+
+    int bdy; // -1: left boundary, 1: right boundary
+    TensorView<T, NDIM+1> result_view;
+    TensorView<T, 2+1> operators; // TODO: comes from function data
+    submit_derivative_kernel(key, N, K, left.current_view(), center.current_view(), right.current_view(),
+                              operators, result_view, nullptr, N, K, g1, g2, axis, bdy, ttg::device::current_stream());
+  };
+
+  return ttg::make_tt<Space>(std::move(derivative_fn),
+                             ttg::edges(left, center, right),
+                             ttg::edges(result),
+                             name);
+}
+
 // computes from bottom up
 // task2: receive norm from children, compute on self, send send up
 
@@ -892,6 +924,7 @@ void test(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, multiply_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, gaxpy_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> derivative_result;
 
   // define N Gaussians
   std::vector<mra::Gaussian<T, NDIM>> gaussians;
@@ -916,11 +949,13 @@ void test(std::size_t N, std::size_t K) {
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
   auto gaxpy = make_gaxpy(compress_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
   auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
+  auto derivative = make_derivative(N, K, multiply_result, derivative_result, 0, "derivative");
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
   auto printer4 = make_printer(gaxpy_result, "gaxpy", false);
   auto printer5 = make_printer(multiply_result, "multiply", false);
+  auto printer6 = make_printer(derivative_result, "derivative", false);
 
   auto connected = make_graph_executable(start.get());
   assert(connected);

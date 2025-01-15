@@ -12,5 +12,6 @@
 #include "kernels/reconstruct.h"
 #include "kernels/multiply.h"
 #include "kernels/norm.h"
+#include "kernels/derivative.h"
 
 #endif // HAVE_KERNELS_H
