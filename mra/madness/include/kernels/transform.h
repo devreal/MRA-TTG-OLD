@@ -32,16 +32,18 @@ template <typename T, Dimension NDIM>
 SCOPE void transform_dir(
   const TensorView<T, NDIM>& node,
   const TensorView<T, 2>& op,
-  size_type axis,
-  TensorView<T, NDIM>& result) {
+  TensorView<T, NDIM>& tmp_result,
+  TensorView<T, NDIM>& result,
+  size_type axis) {
     if (axis == 0){
-      result = inner(op, node, 0, axis);
+      result = inner(op, node, result, 0, axis);
     }
     else if (axis == node.ndim()-1){
-      result = inner(node, op, axis, 0);
+      result = inner(node, op, result, axis, 0);
     }
     else{
-      result = copy(inner(node, op, axis, 0).cycledim(1, axis, -1)); // copy to make contiguous
+      inner(node, op, tmp_result, axis, 0);
+      cycledim(tmp_result, result, 1, axis, -1); // copy to make contiguous
     }
   }
 
@@ -53,7 +55,7 @@ SCOPE void general_transform(
         {
           result = t;
           for (size_type i = 0; i < NDIM; ++i){
-            inner(result, c[i], 0, 0);
+            inner(t, c[i], result, 0, 0);
           }
         }
 

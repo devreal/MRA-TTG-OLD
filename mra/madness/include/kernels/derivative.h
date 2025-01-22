@@ -38,12 +38,16 @@ namespace mra {
       const TensorView<T, NDIM>& node_right,
       const TensorView<T, 3>& operators,
       TensorView<T, NDIM>& deriv,
-      size_type axis)
+      size_type axis,
+      size_type K,
+      T* tmp)
     {
+      TensorView<T, NDIM> tmp_result = TensorView<T, NDIM>(&tmp[0], K, K, K);
       deriv = 0;
-      transform_dir(node_left, operators[0], axis, deriv);
-      transform_dir(node_center, operators[1], axis, deriv);
-      transform_dir(node_right, operators[2], axis, deriv);
+
+      transform_dir(node_left, operators(0), tmp_result, deriv, axis);
+      transform_dir(node_center, operators(1), tmp_result, deriv, axis);
+      transform_dir(node_right, operators(2), tmp_result, deriv, axis);
 
       T scale = std::sqrt(D.template get_reciprocal_width<T>(axis)*std::pow(T(2), T(key.level())));
 
@@ -156,14 +160,14 @@ namespace mra {
     TensorView<T, NDIM>& phi,
     const T* quad_x,
     const size_type K,
-    T* workspace)
+    T* tmp)
     {
       if (parent == child || parent.is_invalid() || child.is_invalid()) result = coeffs;
 
-      fcube_for_mul(D, child, parent, coeffs, result_tmp, phibar, phi, quad_x, K, workspace);
+      fcube_for_mul(D, child, parent, coeffs, result_tmp, phibar, phi, quad_x, K, tmp);
       T scale = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5), T(NDIM*child.level())));
       result_tmp *= scale;
-      transform(result_tmp, phibar, result, workspace);
+      transform(result_tmp, phibar, result, tmp);
     }
 
 } // namespace mra

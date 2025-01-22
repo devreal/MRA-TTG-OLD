@@ -11,9 +11,10 @@ namespace mra{
   namespace detail{
 
     template <typename T, Dimension NDIM>
-    SCOPE TensorView<T, NDIM> inner(
+    SCOPE void inner(
       const TensorView<T, NDIM>& left,
       const TensorView<T, NDIM>& right,
+      TensorView<T, NDIM>& result,
       long k0 = -1,
       long k1 = 0)
     {
@@ -25,30 +26,16 @@ namespace mra{
       static_assert(left.dim(k0) == right.dim(k1), "inner: common index must have the same length");
       static_assert(nd > 0 && nd <= long(3), "inner: invalid number of diemensions in the result");
 
-      long d[NDIM];
-
-      long base=0;
-      for (long i=0; i<k0; ++i) d[i] = left.dim(i);
-      for (long i=k0+1; i<left.ndim(); ++i) d[i-1] = left.dim(i);
-
-      base = left.ndim()-1;
-      for (long i=0; i<k1; ++i) d[i+base] = right.dim(i);
-      base--;
-
-      for (long i=k1+1; i<right.ndim(); ++i) d[i+base] = right.dim(i);
-
-      Tensor<T, NDIM> result(d);
-      inner_result(left, right, k0, k1, result.current_view());
-      return result;
+      inner_result(left, right, result, k0, k1);
     }
 
     template <typename T, Dimension NDIM>
     SCOPE void inner_result(
       const TensorView<T, NDIM>& left,
       const TensorView<T, NDIM>& right,
+      TensorView<T, NDIM>& result
       long k0,
-      long k1,
-      TensorView<T, NDIM>& result)
+      long k1)
     {
       if (k0 < 0) k0 += left.ndim();
       if (k1 < 0) k1 += right.ndim();
@@ -90,7 +77,7 @@ namespace mra{
       if (threadIdx.z == 0) {
         size_type dimj = left.dim(k0);
         auto iter1 = right.unary_iterator(1,k1);
-        T* ptr = result.ptr();
+        T* ptr = result.data();
         for (auto iter0 = left.unary_iterator(1,k0);
              iter0.ptr() != nullptr;
              ++iter0, ptr += iter1.size()) {
