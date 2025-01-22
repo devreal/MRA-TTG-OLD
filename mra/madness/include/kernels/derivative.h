@@ -75,6 +75,8 @@ namespace mra {
       const TensorView<T, NDIM>& node_right,
       const TensorView<T, 3>& operators,
       TensorView<T, NDIM>& deriv,
+      T* tmp,
+      size_type K,
       const G1& g1,
       const G2& g2,
       size_type axis,
@@ -87,7 +89,7 @@ namespace mra {
         }
         else{
           derivative_inner<T, NDIM>(D, key, node_left, node_center, node_right,
-            operators, deriv, axis);
+            operators, deriv, axis, K, tmp);
         }
       }
 
@@ -100,7 +102,9 @@ namespace mra {
       const TensorView<T, NDIM+1> node_right,
       const TensorView<T, 3> operators,
       TensorView<T, NDIM+1> deriv,
+      T* tmp,
       size_type N,
+      size_type K,
       const G1 g1,
       const G2 g2,
       size_type axis,
@@ -115,7 +119,7 @@ namespace mra {
         }
         SYNCTHREADS();
         derivative_kernel_impl<T, NDIM>(D, node_left_view, node_center_view, node_right_view,
-          operators, deriv, axis, is_bdy);
+          operators, deriv, tmp, K, g1, g2, axis, is_bdy);
       }
     }
 
@@ -144,7 +148,7 @@ namespace mra {
 
     CALL_KERNEL(detail::derivative_kernel, N, thread_dims, 0, stream,
       (D, key, node_left, node_center, node_right, operators,
-        deriv, N, axis, is_bdy));
+        deriv, tmp, N, K, axis, is_bdy));
     checkSubmit();
   }
 
