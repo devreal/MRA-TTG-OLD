@@ -8,6 +8,7 @@
 #include "key.h"
 #include "maxk.h"
 #include "transform.h"
+#include "functiondata.h"
 
 namespace mra {
 
@@ -45,9 +46,9 @@ namespace mra {
       TensorView<T, NDIM> tmp_result = TensorView<T, NDIM>(&tmp[0], K, K, K);
       deriv = 0;
 
-      transform_dir(node_left, operators(0), tmp_result, deriv, axis);
-      transform_dir(node_center, operators(1), tmp_result, deriv, axis);
-      transform_dir(node_right, operators(2), tmp_result, deriv, axis);
+      transform_dir(node_left, operators(FunctionData<T, NDIM>::DerivOp::RM), tmp_result, deriv, axis);
+      transform_dir(node_center, operators(FunctionData<T, NDIM>::DerivOP::R0), tmp_result, deriv, axis);
+      transform_dir(node_right, operators(FunctionData<T, NDIM>::DerivOp::RP), tmp_result, deriv, axis);
 
       T scale = std::sqrt(D.template get_reciprocal_width<T>(axis)*std::pow(T(2), T(key.level())));
 

@@ -20,7 +20,8 @@ namespace mra {
             LEFT_RMT = 8, LEFT_R0T = 9,         ///< Blocks of the derivative for the left boundary, transposed
             RIGHT_R0 = 10, RIGHT_RP = 11,       ///< Blocks of the derivative for the right boundary
             RIGHT_R0T = 12, RIGHT_RPT = 13,     ///< Blocks of the derivative for the right boundary, transposed
-            BV_LEFT = 14, BV_RIGHT = 15,        ///< Blocks of the derivative operator for the boundary contribution
+            COUNT = 14                          ///< Number of blocks
+            // BV_LEFT = 14, BV_RIGHT = 15,        ///< Blocks of the derivative operator for the boundary contribution --- not used
         };
 
         enum BCType {BC_ZERO = 0, BC_PERIODIC = 1, BC_FREE = 2, BC_DIRICHLET = 3, BC_ZERONEUMANN = 4, BC_NEUMANN = 5};
@@ -38,9 +39,8 @@ namespace mra {
         BCType bc_left, bc_right;
 
         void make_deriv_op(){
-            nOp = 16 - 2;
             std::array<size_type, 3> d;
-            d[0] = K; d[1] = K; d[2] = nOp - 2; // all but boundary values
+            d[0] = K; d[1] = K; d[2] = static_cast<int>(DerivOp::COUNT); // all but boundary values
             bc_left = BCType::BC_ZERO;
             bc_right = BCType::BC_ZERO;
 
@@ -207,6 +207,7 @@ namespace mra {
         , phibar(K, K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
+        , operators(K, K, DerivOp::COUNT)
         {
             make_phi();
             make_phiT();
@@ -232,6 +233,7 @@ namespace mra {
         const auto& get_phibar() const {return phibar;}
         const auto& get_hg() const {return HG;}
         const auto& get_hgT() const {return HGT;}
+        const auto& get_operators() const {return operators;}
 };
 }
 
