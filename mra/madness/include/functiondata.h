@@ -12,35 +12,138 @@ namespace mra {
     /// Convenient co-location of frequently used data
     template <typename T, Dimension NDIM>
     class FunctionData {
+
+        enum class DerivOp {
+            RM = 0, R0 = 1, RP = 2,             ///< Blocks of the derivative operator
+            RMT = 3, R0T = 4, RPT = 5,          ///< Blocks of the derivative operator, transposed
+            LEFT_RM = 6, LEFT_R0 = 7,           ///< Blocks of the derivative for the left boundary
+            LEFT_RMT = 8, LEFT_R0T = 9,         ///< Blocks of the derivative for the left boundary, transposed
+            RIGHT_R0 = 10, RIGHT_RP = 11,       ///< Blocks of the derivative for the right boundary
+            RIGHT_R0T = 12, RIGHT_RPT = 13,     ///< Blocks of the derivative for the right boundary, transposed
+            BV_LEFT = 14, BV_RIGHT = 15,        ///< Blocks of the derivative operator for the boundary contribution
+        };
+
+        enum BCType {BC_ZERO = 0, BC_PERIODIC = 1, BC_FREE = 2, BC_DIRICHLET = 3, BC_ZERONEUMANN = 4, BC_NEUMANN = 5};
+        // NOTE: In the current v, we only consider Dirichlet boundary conditions.
+
         size_type K;
         Tensor<T,2> phi; // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
         Tensor<T,2> phiT; // transpose of phi
         Tensor<T,2> phibar; // phibar(mu,i) = w[mu]*phi(x[mu],i)
         Tensor<T,2> HG; // Two scale filter applied from left to scaling function coeffs
         Tensor<T,2> HGT; // Two scale filter applied from right to scaling function coeffs
-        Tensor<T,2> rm, r0, rp; // blocks of the ABGV central derivative operator
         std::unique_ptr<T[]> x, w; // Quadrature points and weights on level 0
+        Tensor<T, 3> operators;
+        size_type nOp;
+        BCType bc_left, bc_right;
 
-        void make_abgv_diff_operator() {
+        void make_deriv_op(){
+            nOp = 16 - 2;
+            std::array<size_type, 3> d;
+            d[0] = K; d[1] = K; d[2] = nOp - 2; // all but boundary values
+            bc_left = BCType::BC_ZERO;
+            bc_right = BCType::BC_ZERO;
+
+            operators = Tensor<T, 3>(d);
+            auto deriv_op_view = operators.current_view();
+
+            // Operator blocks
+            auto rm         = deriv_op_view(static_cast<int>(DerivOp::RM));
+            auto r0         = deriv_op_view(static_cast<int>(DerivOp::R0));
+            auto rp         = deriv_op_view(static_cast<int>(DerivOp::RP));
+            auto rmt        = deriv_op_view(static_cast<int>(DerivOp::RMT));
+            auto r0t        = deriv_op_view(static_cast<int>(DerivOp::R0T));
+            auto rpt        = deriv_op_view(static_cast<int>(DerivOp::RPT));
+            auto left_rm    = deriv_op_view(static_cast<int>(DerivOp::LEFT_RM));
+            auto left_r0    = deriv_op_view(static_cast<int>(DerivOp::LEFT_R0));
+            auto left_rmt   = deriv_op_view(static_cast<int>(DerivOp::LEFT_RMT));
+            auto left_r0t   = deriv_op_view(static_cast<int>(DerivOp::LEFT_R0T));
+            auto right_r0   = deriv_op_view(static_cast<int>(DerivOp::RIGHT_R0));
+            auto right_rp   = deriv_op_view(static_cast<int>(DerivOp::RIGHT_RP));
+            auto right_r0t  = deriv_op_view(static_cast<int>(DerivOp::RIGHT_R0T));
+            auto right_rpt  = deriv_op_view(static_cast<int>(DerivOp::RIGHT_RPT));
+            // auto bv_left    = deriv_op_view(DerivOp::BV_LEFT);
+            // auto bv_right   = deriv_op_view(DerivOp::BV_RIGHT);
+
+            double kphase = -1.0;
+            if (K%2 == 0) kphase = 1.0;
             double iphase = 1.0;
-            auto r0_view = r0.current_view();
-            auto rm_view = rm.current_view();
-            auto rp_view = rp.current_view();
-            for (size_type i = 0; i < K; ++i) {
+            for (int i=0; i<K; ++i) {
                 double jphase = 1.0;
-                for (size_type j = 0; j < K; ++j) {
-                    double gammaij = std::sqrt(double((2*i+1)*(2*j+1)));
+                for (int j=0; j<K; ++j) {
+                    double gammaij = sqrt(double((2*i+1)*(2*j+1)));
                     double Kij;
                     if (((i-j)>0) && (((i-j)%2)==1))
                         Kij = 2.0;
                     else
                         Kij = 0.0;
 
-                    r0_view(i,j) = T(0.5*(1.0 - iphase*jphase - 2.0*Kij)*gammaij);
-                    rm_view(i,j) = T(0.5*jphase*gammaij);
-                    rp_view(i,j) = T(-0.5*iphase*gammaij);
+                    r0(i,j) = 0.5*(1.0 - iphase*jphase - 2.0*Kij)*gammaij;
+                    rm(i,j) = 0.5*jphase*gammaij;
+                    rp(i,j) =-0.5*iphase*gammaij;
+
+                    // Constraints on the derivative
+                    if (bc_left == BC_ZERONEUMANN || bc_left == BC_NEUMANN) {
+                        left_rm(i, j)= jphase*gammaij*0.5*(1.0 + iphase*kphase/K);
+
+                        double phi_tmpj_left = 0;
+
+                        for (int l=0; l<K; ++l) {
+                            double gammalj = sqrt(double((2*l+1)*(2*j+1)));
+                            double Klj;
+
+                            if (((l-j)>0) && (((l-j)%2)==1))  Klj = 2.0;
+                            else   Klj = 0.0;
+
+                            phi_tmpj_left += sqrt(double(2*l+1))*Klj*gammalj;
+                        }
+                        phi_tmpj_left = -jphase*phi_tmpj_left;
+                        left_r0(i,j) = (0.5*(1.0 + iphase*kphase/K) - Kij)*gammaij + iphase*sqrt(double(2*i+1))*phi_tmpj_left/pow(K,2.);
+                    }
+                    else if (bc_left == BC_ZERO || bc_left == BC_DIRICHLET || bc_left == BC_FREE) {
+                        left_rm(i,j) = rm(i,j);
+
+                        // B.C. with a function
+                        if (bc_left == BC_ZERO || bc_left == BC_DIRICHLET)
+                            left_r0(i,j) = (0.5 - Kij)*gammaij;
+
+                        // No B.C.
+                        else if (bc_left == BC_FREE)
+                            left_r0(i,j) = (0.5 - iphase*jphase - Kij)*gammaij;
+                    }
+
+                    // Constraints on the derivative
+                    if (bc_right == BC_ZERONEUMANN || bc_right == BC_NEUMANN) {
+                        right_rp(i,j) = -0.5*(iphase + kphase / K)*gammaij;
+
+                        double phi_tmpj_right = 0;
+                        for (int l=0; l<K; ++l) {
+                            double gammalj = sqrt(double((2*l+1)*(2*j+1)));
+                            double Klj;
+                            if (((l-j)>0) && (((l-j)%2)==1))  Klj = 2.0;
+                            else   Klj = 0.0;
+                            phi_tmpj_right += sqrt(double(2*l+1))*Klj*gammalj;
+                        }
+                        right_rp(i,j) = -(0.5*jphase*(iphase+ kphase/K) + Kij)*gammaij + sqrt(double(2*i+1))*phi_tmpj_right/pow(K,2.);
+                    }
+                    else if (bc_right == BC_ZERO || bc_right == BC_FREE || bc_right == BC_DIRICHLET) {
+                        right_rp(i,j) = rp(i,j);
+
+                        // Zero BC
+                        if (bc_right == BC_ZERO || bc_right == BC_DIRICHLET)
+                            right_r0(i,j) = -(0.5*iphase*jphase + Kij)*gammaij;
+
+                        // No BC
+                        else if (bc_right == BC_FREE)
+                            right_r0(i,j) = (1.0 - 0.5*iphase*jphase - Kij)*gammaij;
+                    }
+
+                    jphase = -jphase;
                 }
+                iphase = -iphase;
             }
+
+
         }
 
         /// Set phi(mu,i) to be phi(x[mu],i)
@@ -104,9 +207,6 @@ namespace mra {
         , phibar(K, K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
-        , rm(K, K)
-        , r0(K, K)
-        , rp(K, K)
         {
             make_phi();
             make_phiT();
@@ -119,7 +219,7 @@ namespace mra {
                     HGT_view(j,i) = HG_view(i,j);
                 }
             }
-            make_abgv_diff_operator();
+            make_deriv_op();
         }
 
         FunctionData(FunctionData&&) = default;
@@ -132,12 +232,7 @@ namespace mra {
         const auto& get_phibar() const {return phibar;}
         const auto& get_hg() const {return HG;}
         const auto& get_hgT() const {return HGT;}
-        const auto& get_rm() const {return rm;}
-        const auto& get_r0() const {return r0;}
-        const auto& get_rp() const {return rp;}
-    };
-
+};
 }
-
 
 #endif
