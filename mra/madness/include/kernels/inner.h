@@ -18,11 +18,6 @@ namespace mra{
       long k0 = -1,
       long k1 = 0)
     {
-      if (k0 < 0) k0 += left.ndim();
-      if (k1 < 0) k1 += right.ndim();
-      long nd = left.ndim() + right.ndim() - 2;
-
-      static_assert(NDIM > 1, "inner: dimension must be > 1");
       static_assert(left.dim(k0) == right.dim(k1), "inner: common index must have the same length");
 
       if (k0 < 0) k0 += left.ndim();
