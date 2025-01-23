@@ -24,19 +24,7 @@ namespace mra{
 
       static_assert(NDIM > 1, "inner: dimension must be > 1");
       static_assert(left.dim(k0) == right.dim(k1), "inner: common index must have the same length");
-      static_assert(nd > 0 && nd <= long(3), "inner: invalid number of diemensions in the result");
 
-      inner_result(left, right, result, k0, k1);
-    }
-
-    template <typename T, Dimension NDIM>
-    SCOPE void inner_result(
-      const TensorView<T, NDIM>& left,
-      const TensorView<T, NDIM>& right,
-      TensorView<T, NDIM>& result
-      long k0,
-      long k1)
-    {
       if (k0 < 0) k0 += left.ndim();
       if (k1 < 0) k1 += right.ndim();
 
