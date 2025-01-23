@@ -64,9 +64,9 @@ namespace mra{
       // TODO: use more than the first slice of threads in z here
       if (threadIdx.z == 0) {
         size_type dimj = left.dim(k0);
-        auto iter1 = right.unary_iterator(1,k1);
+        auto iter1 = right.unary_iterator(1, false, k1);
         T* ptr = result.data();
-        for (auto iter0 = left.unary_iterator(1,k0);
+        for (auto iter0 = left.unary_iterator(1, false, k0);
              iter0.ptr() != nullptr;
              ++iter0, ptr += iter1.size()) {
           T* __restrict__ xp0 = iter0.ptr();

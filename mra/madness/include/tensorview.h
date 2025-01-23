@@ -582,6 +582,10 @@ namespace mra {
       return iterator(this, iterlevel, jdim);
     }
 
+    TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, bool fusedim, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
+      return iterator(this, iterlevel, jdim);
+    }
+
   private:
     dims_array_t m_dims;
     T *m_ptr; // may be const or non-const
