@@ -34,9 +34,9 @@ namespace mra{
             for (size_type i = 0; i<dimj; ++i, _p0 += Tstride) {
               *ptr++ = val * (*_p0);
             }
+          }
+        }
       }
-
-
     }
   }
 }
