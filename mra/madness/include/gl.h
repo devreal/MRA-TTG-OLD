@@ -15,6 +15,10 @@ namespace mra {
     /// Arrays for points and weights for the Gauss-Legendre quadrature on [0,1].
     /// only available directly on the host
     extern const double gl_data[128][64];
+
+    struct empty_deleter {
+      void operator()(const double*) const {}
+    };
   } // namespace detail
 
   /**
@@ -23,7 +27,7 @@ namespace mra {
 
   template<typename T>
   inline ttg::Buffer<const T> GLbuffer() {
-    return ttg::Buffer<const T>(&detail::gl_data[0][0], sizeof(detail::gl_data)/sizeof(T));
+    return ttg::Buffer<const T>(std::unique_ptr<const T[], detail::empty_deleter>(&detail::gl_data[0][0]), sizeof(detail::gl_data)/sizeof(T));
   }
 
   template<typename T>

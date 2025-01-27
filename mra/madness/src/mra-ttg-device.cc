@@ -883,8 +883,8 @@ auto make_norm(size_type N, size_type K,
 template<typename T, mra::Dimension NDIM>
 void test(std::size_t N, std::size_t K) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
-  mra::Domain<NDIM> D;
-  D.set_cube(-6.0,6.0);
+  auto D = std::make_unique<mra::Domain<NDIM>>();
+  D->set_cube(-6.0,6.0);
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
@@ -904,12 +904,12 @@ void test(std::size_t N, std::size_t K) {
       r[d] = T(-6.0) + T(12.0)*drand48();
     }
     std::cout << "Gaussian " << i << " expnt " << expnt << std::endl;
-    gaussians.emplace_back(D, expnt, r);
+    gaussians.emplace_back(*D, expnt, r);
   }
 
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
-  auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
+  auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D));
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
@@ -950,8 +950,8 @@ void test(std::size_t N, std::size_t K) {
 template<typename T, mra::Dimension NDIM>
 void test_pcr(std::size_t N, std::size_t K) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
-  mra::Domain<NDIM> D;
-  D.set_cube(-6.0,6.0);
+  auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
+  D[0].set_cube(-6.0,6.0);
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
@@ -962,8 +962,7 @@ void test_pcr(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> norm_result;
 
   // define N Gaussians
-  std::vector<mra::Gaussian<T, NDIM>> gaussians;
-  gaussians.reserve(N);
+  auto gaussians = std::make_unique<mra::Gaussian<T, NDIM>[]>(N);
   // T expnt = 1000.0;
   for (int i = 0; i < N; ++i) {
     T expnt = 1500 + 1500*drand48();
@@ -972,12 +971,12 @@ void test_pcr(std::size_t N, std::size_t K) {
       r[d] = T(-6.0) + T(12.0)*drand48();
     }
     std::cout << "Gaussian " << i << " expnt " << expnt << std::endl;
-    gaussians.emplace_back(D, expnt, r);
+    gaussians[i] = mra::Gaussian<T, NDIM>(D[0], expnt, r);
   }
 
   // put it into a buffer
-  auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
-  auto db = ttg::Buffer<mra::Domain<NDIM>>(&D);
+  auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
+  auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   // C(P)
