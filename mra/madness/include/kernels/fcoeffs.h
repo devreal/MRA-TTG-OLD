@@ -99,7 +99,7 @@ namespace mra {
 
     template<typename Fn, typename T, Dimension NDIM>
     GLOBALSCOPE void
-    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
+    LAUNCH_BOUNDS(max_threads(MRA_MAX_K))
     fcoeffs_kernel(
       const Domain<NDIM>& D,
       const T* gldata,
@@ -166,12 +166,11 @@ namespace mra {
       ttg::device::Stream stream)
   {
     /**
-     * Launch the kernel with KxK threads in each of the N blocks.
+     * Launch the kernel with KxKxK threads in each of the N blocks.
      * Computation on functions is embarassingly parallel and no
      * synchronization is required.
      */
-    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
-    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    Dim3 thread_dims = max_thread_dims(K);
     size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     /* launch one block per child */

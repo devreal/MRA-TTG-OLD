@@ -23,6 +23,7 @@ namespace mra {
     }
 
     template <typename T, Dimension NDIM>
+    LAUNCH_BOUNDS(max_threads(2*MRA_MAX_K))
     GLOBALSCOPE void gaxpy_kernel(
       const TensorView<T, NDIM+1> nodeA_view,
       const TensorView<T, NDIM+1> nodeB_view,
@@ -58,8 +59,7 @@ namespace mra {
     size_type K,
     ttg::device::Stream stream)
   {
-    size_type max_threads = std::min(2*K, 2*MRA_MAX_K_SIZET);
-    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    Dim3 thread_dims = max_thread_dims(2*K);
 
     CALL_KERNEL(detail::gaxpy_kernel, N, thread_dims, 0, stream,
       (funcA, funcB, funcR, scalarA, scalarB, N, key));
