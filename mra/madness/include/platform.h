@@ -2,6 +2,7 @@
 #define MRA_DEVICE_PLATFORM_H
 
 #include <cstdlib>
+#include <algorithm>
 
 #if defined(MRA_ENABLE_CUDA)
 #include <cuda.h>
@@ -53,14 +54,14 @@ namespace mra::detail {
 #if defined(__CUDACC__)
 #define checkSubmit() \
   if (cudaPeekAtLastError() != cudaSuccess)                         \
-    std::cout << "kernel submission failed at " << __LINE__ << ": " \
+    std::cout << "kernel submission failed at " << __FILE__ << ":" << __LINE__ << ": " \
     << cudaGetErrorString(cudaPeekAtLastError()) << std::endl;
 #define CALL_KERNEL(name, block, thread, shared, stream, args) \
   name<<<block, thread, shared, stream>>> args
 #elif defined(__HIPCC__)
 #define checkSubmit() \
   if (hipPeekAtLastError() != hipSuccess)                           \
-    std::cout << "kernel submission failed at " << __LINE__ << ": " \
+    std::cout << "kernel submission failed at " << __FILE__ << ":" << __LINE__ << ": " \
     << hipGetErrorString(hipPeekAtLastError()) << std::endl;
 #define CALL_KERNEL(name, block, thread, shared, stream, args) \
   name<<<block, thread, shared, stream>>> args
@@ -92,6 +93,12 @@ namespace mra::detail {
 #else  // __CUDA_ARCH__
 #define GLOBALSCOPE
 #endif // __CUDA_ARCH__
+
+#if defined(MRA_ENABLE_HOST)
+#define MAX_THREADS_PER_BLOCK 1
+#else
+#define MAX_THREADS_PER_BLOCK 1024
+#endif
 
 #if defined(MRA_ENABLE_HOST)
 using Dim3 = mra::detail::dim3;
@@ -137,6 +144,23 @@ namespace mra {
 #endif // HAVE_DEVICE_ARCH
   }
 
+  constexpr inline Dim3 max_thread_dims(int K) {
+    return Dim3(K, K, std::min(((MAX_THREADS_PER_BLOCK) / (K*K)), K));
+  }
+
+  constexpr inline int max_threads(int K) {
+    Dim3 thread_dims = max_thread_dims(K);
+    return thread_dims.x*thread_dims.y*thread_dims.z;
+  }
+
 } // namespace mra
+
+namespace std {
+  inline std::ostream& operator<<(std::ostream& os, Dim3& d) {
+    os << "{" << d.x << ", " << d.y << ", " << d.z << "}";
+    return os;
+  }
+} // namespace std
+
 
 #endif // MRA_DEVICE_PLATFORM_H
