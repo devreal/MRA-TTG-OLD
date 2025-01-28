@@ -465,10 +465,10 @@ auto make_reconstruct(
 #endif
 
     // helper lambda to pick apart the std::array
-    auto assemble_tensor_ptrs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
-      return std::array{(r_arr[Is].coeffs().current_view().data())...};
+    auto assemble_tensors = [&]<std::size_t... Is>(std::index_sequence<Is...>){
+      return std::array{(r_arr[Is].coeffs().current_view())...};
     };
-    auto r_ptrs = assemble_tensor_ptrs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
+    auto r_ptrs = assemble_tensors(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     auto node_view = node.coeffs().current_view();
     auto hg_view = hg.current_view();
     auto from_parent_view = from_parent.coeffs().current_view();
