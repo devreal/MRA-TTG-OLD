@@ -16,10 +16,10 @@ namespace mra {
     // Test gaussian functor
     template <typename T, Dimension NDIM>
     class Gaussian {
-        const T expnt;
-        const Coordinate<T,NDIM> origin;
-        const T fac;
-        const T maxr;
+        T expnt;
+        Coordinate<T,NDIM> origin;
+        T fac;
+        T maxr;
         Level initlev;
     public:
         /* default construction required for ttg::Buffer */
@@ -46,7 +46,9 @@ namespace mra {
 
         /* default copy ctor and operator */
         Gaussian(const Gaussian&) = default;
+        Gaussian(Gaussian&&) = default;
         Gaussian& operator=(const Gaussian&) = default;
+        Gaussian& operator=(Gaussian&&) = default;
 
         // T operator()(const Coordinate<T,NDIM>& r) const {
         //     T rsq = 0.0;

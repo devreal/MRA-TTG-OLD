@@ -35,7 +35,7 @@ if (HAVE_HIP)
                      madness/src/gl.cc
                      madness/src/twoscale.cc)
   target_compile_definitions(mra-device-hip-parsec PUBLIC MRA_ENABLE_HIP=1 TTG_USE_PARSEC=1)
-  target_link_libraries(mra-device-hip-parsec PUBLIC MADworld ttg-parsec)
+  target_link_libraries(mra-device-hip-parsec PUBLIC MADworld ttg-parsec hip::host)
 endif (HAVE_HIP)
 
 # test to verify that tensor slices work

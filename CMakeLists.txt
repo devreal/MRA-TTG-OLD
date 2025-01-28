@@ -19,6 +19,7 @@ set(HAVE_CUDA ${CMAKE_CUDA_COMPILER} CACHE BOOL "True if we can compile .cu file
 check_language(HIP)
 if(CMAKE_HIP_COMPILER)
   enable_language(HIP)
+  find_package(hip REQUIRED)
   set(TTG_ENABLE_HIP ON)
 endif(CMAKE_HIP_COMPILER)
 set(HAVE_HIP ${CMAKE_HIP_COMPILER} CACHE BOOL "True if we can compile .hip files")
