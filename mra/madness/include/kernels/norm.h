@@ -31,7 +31,7 @@ namespace mra {
     GLOBALSCOPE void norm_kernel(
       const TensorView<T, NDIM+1> node,
       T* result_norms,
-      std::array<const T*, Key<NDIM>::num_children()>& child_norms,
+      std::array<const T*, Key<NDIM>::num_children()> child_norms,
       size_type N,
       size_type K,
       const Key<NDIM>& key)
