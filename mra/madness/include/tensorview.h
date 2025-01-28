@@ -63,16 +63,11 @@ namespace mra {
   template<class TensorViewT, typename Fn>
   requires(TensorViewT::is_tensor())
   SCOPE void foreach_idx(const TensorViewT& t, Fn&& fn) {
-#ifdef HAVE_DEVICE_ARCH
-    size_type tid = threadIdx.x + blockDim.x*(threadIdx.y + (blockDim.y*threadIdx.z));
-    for (size_type i = tid; i < t.size(); i += blockDim.x*blockDim.y*blockDim.z) {
+    size_type tid = thread_id();
+    for (size_type i = tid; i < t.size(); i += block_size()) {
       fn(i);
     }
-#else  // HAVE_DEVICE_ARCH
-    for (size_type i = 0; i < t.size(); ++i) {
-      fn(i);
-    }
-#endif // HAVE_DEVICE_ARCH
+    SYNCTHREADS();
   }
 
   namespace detail {
