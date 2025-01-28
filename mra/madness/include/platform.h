@@ -7,9 +7,8 @@
 #include <cuda.h>
 #include <cuda_runtime.h>
 #include <cuda_runtime_api.h>
-#elif defined(MRA_ENABLE_HIP)
+#elif defined(MRA_ENABLE_HIP) && !defined(__HIP_DEVICE_COMPILE__)
 #include <hip/hip_runtime.h>
-#include <hip_runtime_api.h>
 #endif
 
 /**
