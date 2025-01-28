@@ -47,7 +47,7 @@ namespace mra {
 
     template <typename T, Dimension NDIM>
     GLOBALSCOPE void
-    LAUNCH_BOUNDS(MRA_MAX_K*MRA_MAX_K)
+    LAUNCH_BOUNDS(max_threads(MRA_MAX_K))
     multiply_kernel(
       const Domain<NDIM>& D,
       const TensorView<T, NDIM+1> nodeA_view,
@@ -99,8 +99,7 @@ namespace mra {
     T* tmp,
     ttg::device::Stream stream)
   {
-    size_type max_threads = std::min(K, MRA_MAX_K_SIZET);
-    Dim3 thread_dims = Dim3(max_threads, max_threads, 1);
+    Dim3 thread_dims = max_thread_dims(2*K);
 
     CALL_KERNEL(detail::multiply_kernel, N, thread_dims, 0, stream,
       (D, funcA, funcB, funcR, tmp,

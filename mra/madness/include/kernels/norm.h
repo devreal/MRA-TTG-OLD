@@ -28,6 +28,7 @@ namespace mra {
     }
 
     template <typename T, Dimension NDIM>
+    LAUNCH_BOUNDS(max_threads(2*MRA_MAX_K))
     GLOBALSCOPE void norm_kernel(
       const TensorView<T, NDIM+1> node,
       T* result_norms,
@@ -64,7 +65,7 @@ namespace mra {
     std::array<const T*, Key<NDIM>::num_children()>& child_norms,
     ttg::device::Stream stream)
   {
-    Dim3 thread_dims = Dim3(K, K, 1);
+    Dim3 thread_dims = max_thread_dims(2*K);
     size_type numthreads = thread_dims.x*thread_dims.y*thread_dims.z;
 
     CALL_KERNEL(detail::norm_kernel, N, thread_dims, numthreads*sizeof(T), stream,
