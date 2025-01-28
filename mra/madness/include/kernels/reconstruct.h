@@ -79,10 +79,11 @@ namespace mra {
       SHARED TensorView<T, NDIM> node, from_parent;
 
       size_type blockId = blockIdx.x;
+      T* block_tmp_ptr = &tmp_ptr[blockId*reconstruct_tmp_size<NDIM>(K)];
       if (is_t0) {
-        s           = TensorView<T, NDIM>(&tmp_ptr[0], 2*K);
-        tmp_node    = TensorView<T, NDIM>(&tmp_ptr[1*TWOK2NDIM], 2*K);
-        workspace   = &tmp_ptr[2*TWOK2NDIM];
+        s           = TensorView<T, NDIM>(&block_tmp_ptr[0], 2*K);
+        tmp_node    = TensorView<T, NDIM>(&block_tmp_ptr[1*TWOK2NDIM], 2*K);
+        workspace   = &block_tmp_ptr[2*TWOK2NDIM];
       }
 
       for (size_type fnid = blockId; fnid < N; fnid += gridDim.x){
