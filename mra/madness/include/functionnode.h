@@ -28,10 +28,10 @@ namespace mra {
     template <typename T, Dimension NDIM>
     class FunctionsReconstructedNode : public ttg::TTValue<FunctionsReconstructedNode<T, NDIM>> {
       public: // temporarily make everything public while we figure out what we are doing
-        using key_type = Key<NDIM>;
-        using tensor_type = Tensor<T,NDIM+1>;
-        using view_type   = TensorView<T, NDIM>;
-        using const_view_type   = TensorView<const T, NDIM>;
+        using key_type        = Key<NDIM>;
+        using tensor_type     = SparseTensor<T,NDIM+1>;
+        using view_type       = TensorView<T, NDIM>;
+        using const_view_type = TensorView<const T, NDIM>;
         static constexpr bool is_function_node = true;
 
       private:

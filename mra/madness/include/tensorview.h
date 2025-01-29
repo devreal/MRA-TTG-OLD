@@ -153,7 +153,7 @@ namespace mra {
 
 
   // fwd-decl
-  template<typename T, Dimension NDIM, typename SparsityT>
+  template<typename T, Dimension NDIM, template<class> class SparsityT>
   class TensorView;
 
   template<typename TensorViewT>
@@ -324,12 +324,12 @@ namespace mra {
 
 
 
-  template<typename T, Dimension NDIM, typename SparsityT>
+  template<typename T, Dimension NDIM, template<class> class SparsityT>
   class TensorView {
   public:
     using value_type = T;
     using const_value_type = std::add_const_t<value_type>;
-    using sparsity_type = SparsityT;
+    using sparsity_type = SparsityT<T>;
     using tensorview_type = TensorView<T, NDIM, SparsityT>;
     SCOPE static constexpr Dimension ndim() { return NDIM; }
     using dims_array_t = std::array<size_type, ndim()>;
@@ -365,7 +365,7 @@ namespace mra {
     SCOPE explicit TensorView(T *ptr, Dims... dims)
     : m_dims({dims...})
     , m_sparsity(ptr, m_dims[0]),
-    , m_ptr(ptr + m_sparsity.num_values())
+    , m_ptr(ptr + m_sparsity.num_values(m_dims[0]))
     {
       static_assert(sizeof...(Dims) == NDIM || sizeof...(Dims) == 1,
                     "Number of arguments does not match number of Dimensions. "
@@ -378,7 +378,7 @@ namespace mra {
     SCOPE explicit TensorView(T *ptr, const dims_array_t& dims)
     : m_dims(dims)
     , m_sparsity(ptr, m_dims[0]),
-    , m_ptr(ptr + m_sparsity.num_values())
+    , m_ptr(ptr + m_sparsity.num_values(m_dims[0]))
     { }
 
     template<typename S, typename... Dims>

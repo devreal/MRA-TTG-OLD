@@ -56,10 +56,13 @@ auto make_project(
 #endif // MRA_ENABLE_HOST
     auto* fn_arr = fb.host_ptr();
     bool all_initial_level = true;
+    auto sparsity = SparsityArray(N);
+    sparsity.set_all_nonzero();
     for (std::size_t i = 0; i < N; ++i) {
       if (key.level() >= initial_level(fn_arr[i])) {
+        sparsity.set_zero(i);
         all_initial_level = false;
-        break;
+        //break;
       }
     }
     if (all_initial_level) {
@@ -78,9 +81,11 @@ auto make_project(
     } else {
       bool all_negligible = true;
       for (std::size_t i = 0; i < N; ++i) {
-        all_negligible &= mra::is_negligible<FnT,T,NDIM>(
-                                    fn_arr[i], db.host_ptr()->template bounding_box<T>(key),
-                                    mra::truncate_tol(key,thresh));
+        if (mra::is_negligible<FnT,T,NDIM>(fn_arr[i], db.host_ptr()->template bounding_box<T>(key),
+                                           mra::truncate_tol(key,thresh))) {
+          all_negligible = false;
+          sparsity.set_zero(i);
+        }
       }
       //std::cout << "project " << key << " all negligible " << all_negligible << std::endl;
       if (all_negligible) {

@@ -97,6 +97,15 @@ namespace mra {
       std::copy_n(s.m_data, m_count, m_data);
     }
 
+    /* creates a non-owning Sparsity object */
+    template<typename SparsityT>
+    SparsityRange(const SparsityT& s)
+    : m_count(s.size())
+    {
+      assert(m_count == s.size());
+      apply(s);
+    }
+
     SparsityArray(SparsityArray&& other) = default;
 
     SparsityArray& operator=(SparsityArray&& other) = default;
@@ -265,10 +274,6 @@ namespace mra {
     }
 
     /* returns the number of bytes needed to track sparsity for count entries */
-    size_type num_values() const {
-      return num_values_required(m_count);
-    }
-
     static constexpr size_type num_values_required(size_type count) {
       return (count + sizeof(value_type)-1) / sizeof(value_type);
     }
@@ -455,8 +460,8 @@ namespace mra {
 
     /* creates a non-owning Sparsity object */
     template<typename SparsityT>
-    SparsityRange(size_type count, const SparsityT& s)
-    : m_count(count)
+    SparsityRange(const SparsityT& s)
+    : m_count(s.size())
     {
       assert(m_count == s.size());
       apply(s);
@@ -611,10 +616,6 @@ namespace mra {
     }
 
     /* returns the number of bytes needed to track sparsity for count entries */
-    size_type num_values() const {
-      return num_values_required(m_count);
-    }
-
     static constexpr size_type num_values_required(size_type count) {
       return (count + sizeof(value_type)-1) / sizeof(value_type);
     }
@@ -719,11 +720,6 @@ namespace mra {
      * and both sparsity objects must point to the same memory space */
     constexpr Dense& operator=(const Dense& s) = default;
     constexpr Dense& operator=(Dense&& s) = default;
-
-    /* returns the number of underlying needed to track sparsity for count entries */
-    constexpr size_type num_values() const {
-      return 0;
-    }
 
     /* returns the number of underlying values needed to track sparsity for count entries */
     static constexpr size_type num_values_required(size_type count) {
