@@ -28,14 +28,13 @@ namespace mra {
         // NOTE: In the current v, we only consider Dirichlet boundary conditions.
 
         size_type K;
-        Tensor<T,2> phi; // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
-        Tensor<T,2> phiT; // transpose of phi
-        Tensor<T,2> phibar; // phibar(mu,i) = w[mu]*phi(x[mu],i)
-        Tensor<T,2> HG; // Two scale filter applied from left to scaling function coeffs
-        Tensor<T,2> HGT; // Two scale filter applied from right to scaling function coeffs
-        std::unique_ptr<T[]> x, w; // Quadrature points and weights on level 0
-        Tensor<T, 3> operators;
-        size_type nOp;
+        Tensor<T,2> phi;            // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
+        Tensor<T,2> phiT;           // transpose of phi
+        Tensor<T,2> phibar;         // phibar(mu,i) = w[mu]*phi(x[mu],i)
+        Tensor<T,2> HG;             // Two scale filter applied from left to scaling function coeffs
+        Tensor<T,2> HGT;            // Two scale filter applied from right to scaling function coeffs
+        std::unique_ptr<T[]> x, w;  // Quadrature points and weights on level 0
+        Tensor<T, 2+1> operators;   // Derivative operators
         BCType bc_left, bc_right;
 
         void make_deriv_op(){

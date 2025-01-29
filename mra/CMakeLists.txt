@@ -43,4 +43,3 @@ add_executable(tensor-test
                madness/tests/tensor_test.cc)
 target_compile_definitions(tensor-test PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
 target_link_libraries(tensor-test PUBLIC MADworld ttg-parsec)
-
