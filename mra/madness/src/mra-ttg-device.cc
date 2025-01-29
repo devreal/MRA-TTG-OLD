@@ -8,6 +8,7 @@
 #include "functionfunctor.h"
 #include "key.h"
 #include "domain.h"
+#include "options.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
@@ -1060,11 +1061,18 @@ void test_pcr(std::size_t N, std::size_t K) {
 }
 
 int main(int argc, char **argv) {
-  ttg::initialize(argc, argv);
+
+  /* options */
+  auto opt = mra::OptionParser(argc, argv);
+  size_type N = opt.parse("-N", 10);
+  size_type K = opt.parse("-K", 10);
+  int cores   = opt.parse("-c", -1); // -1: use all cores
+
+  ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
-  test_pcr<double, 3>(10, 10);
+  test_pcr<double, 3>(N, K);
 
   ttg::finalize();
 }
