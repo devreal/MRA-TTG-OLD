@@ -44,6 +44,10 @@ namespace mra {
         SCOPE Key(Level n, const std::array<Translation,NDIM>& l) : n(n), l(l)
         { }
 
+        /// Construct from level and translation=0
+        SCOPE Key(Level n) : n(n), l({0})
+        { }
+
         /// Assignment default is OK
         SCOPE Key& operator=(const Key<NDIM>& other) = default;
 
@@ -133,6 +137,10 @@ namespace mra {
         SCOPE Key<NDIM> neighbor(const Key<NDIM>& disp){
             std::array<Translation,NDIM> l = this->l + disp.l;
             return Key<NDIM>(n, l);
+        }
+
+        SCOPE Key<NDIM> invalid(){
+            return Key<NDIM>(-1);
         }
 
         SCOPE bool is_invalid() const {

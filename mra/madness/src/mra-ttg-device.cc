@@ -881,23 +881,25 @@ auto make_derivative(size_type N, size_type K,
                const G1& g1,
                const G2& g2,
                const size_type axis,
-               const char* name = "derivative")
+               const int bc_left,
+               const int bc_right,
+               const char* name = "derivative")  // add bc in here
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> left;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> center;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> right;
 
-  auto derivative_fn = [N, K, g1, g2, axis](const mra::Key<NDIM>& key,
+  auto derivative_fn = [N, K, g1, g2, axis, bc_left, bc_right](const mra::Key<NDIM>& key,
                               const mra::FunctionsReconstructedNode<T, NDIM>& left,
                               const mra::FunctionsReconstructedNode<T, NDIM>& center,
                               const mra::FunctionsReconstructedNode<T, NDIM>& right,
                               const mra::Tensor<T, 1>& in) -> TASKTYPE {
 
-    int bdy; // -1: left boundary, 1: right boundary
+    bool is_bdy = false;
     TensorView<T, NDIM+1> result_view;
     TensorView<T, 2+1> operators; // TODO: comes from function data
     submit_derivative_kernel(key, N, K, left.current_view(), center.current_view(), right.current_view(),
-                              operators, result_view, nullptr, N, K, g1, g2, axis, bdy, ttg::device::current_stream());
+                              operators, result_view, nullptr, N, K, g1, g2, axis, is_bdy, bc_left, bc_right, ttg::device::current_stream());
   };
 
   return ttg::make_tt<Space>(std::move(derivative_fn),

@@ -527,6 +527,8 @@ namespace mra {
       return *this;
     }
 
+    SCOPE void reduce_rank(const T& eps) {return;}
+
     SCOPE TensorSlice<TensorView> operator()(const std::array<Slice, NDIM>& slices) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
       return TensorSlice<TensorView>(*this, slices);
