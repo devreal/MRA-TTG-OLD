@@ -36,6 +36,7 @@ namespace mra {
         std::unique_ptr<T[]> x, w;  // Quadrature points and weights on level 0
         Tensor<T, 2+1> operators;   // Derivative operators
         BCType bc_left, bc_right;
+        // TODO: add quad_x and corresponding functions
 
         void make_deriv_op(){
             std::array<size_type, 3> d;

@@ -878,34 +878,106 @@ template <typename T, Dimension NDIM>
 auto make_derivative(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in,
                ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
+               const mra::FunctionData<T, NDIM>& functiondata,
+               const ttg::Buffer<mra::Domain<NDIM>>& db,
                const T g1,
                const T g2,
-               const size_type axis,
+               const Dimension axis,
                const int bc_left,
                const int bc_right,
-               const char* name = "derivative")  // add bc in here
+               const char* name = "derivative")
 {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> left;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> center;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> right;
 
-  auto derivative_fn = [N, K, g1, g2, axis, bc_left, bc_right](const mra::Key<NDIM>& key,
+  auto dispatch_fn = [](const mra::Key<NDIM>& key,
+                        const mra::FunctionsReconstructedNode<T, NDIM>& in_node) -> TASKTYPE {
+
+    auto sends = ttg::device::forward(); // collection of send operations in this task
+    sends.push_back(ttg::device::send<1>(key, in));
+
+    auto l = key.translation();
+    auto n = key.level();
+
+    bool has_right=false, has_left=false;
+
+    if (l[axis] != 0) has_left = true;
+    if (l[axis] != std::pow(2,n)-1) has_right = true;
+
+    if (has_right){
+      auto l_right = l;
+      l_right[axis] += 1;
+      mra::Key<NDIM> right_key = Key<NDIM>(n, l_right);
+      sends.push_back(ttg::device::send<0>(right_key, in_node));
+    }// else send an empty node
+
+    if (has_left){
+      auto l_right = l;
+      l_left[axis] -= 1;
+      mra::Key<NDIM> left_key = Key<NDIM>(n, l_left);
+      sends.push_back(ttg::device::send<2>(left_key, in_node));
+    }// else send an empty node
+  };
+
+  auto dispatch_tt = ttg::make_tt<Space>(std::move(dispatch_fn),
+                                         ttg::edges(in),
+                                         ttg::edges(left, center, right),
+                                         "derivative-dispatch");
+
+
+  auto derivative_fn = [&, N, K, g1, g2, axis, bc_left, bc_right](const mra::Key<NDIM>& key,
                               const mra::FunctionsReconstructedNode<T, NDIM>& left,
                               const mra::FunctionsReconstructedNode<T, NDIM>& center,
                               const mra::FunctionsReconstructedNode<T, NDIM>& right,
                               const mra::Tensor<T, 1>& in) -> TASKTYPE {
+    auto sends = ttg::device::forward(); // collection of send operations in this task
 
-    bool is_bdy = false;
-    TensorView<T, NDIM+1> result_view;
-    TensorView<T, 2+1> operators; // TODO: comes from function data
-    submit_derivative_kernel(key, N, K, left.current_view(), center.current_view(), right.current_view(),
-                              operators, result_view, nullptr, N, K, g1, g2, axis, is_bdy, bc_left, bc_right, ttg::device::current_stream());
+    if (center.empty()){
+      if (!left.empty()){
+        auto l = key.translation();
+        l[axis] -= 1; // not right, need a function to do this
+        mra::Key<NDIM> key_left = Key<NDIM(key.level()+1)>;
+        sends.push_back(ttg::device::send<0>(key_left, left));
+      }
+
+      if (!right.empty()){
+        auto l = key.translation();
+        l[axis] += 1; // not right, need a function to do this
+        mra::Key<NDIM> key_right = Key<NDIM(key.level()+1)>;
+        sends.push_back(ttg::device::send<0>(key_right, right));
+      }
+      co_await std::move(sends);
+    }
+    else {
+
+      bool is_bdy = false;
+      mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
+      ttg::Buffer<T> tmp = ttg::Buffer<T>(derivative_tmp_size<NDIM>(K)*N);
+      Tensor<T, 2+1>& operators = functiondata.get_operators();
+      Tensor<T, 2>& phibar= functiondata.get_phibar();
+      Tensor<T, 2>& phi= functiondata.get_phi();
+
+      co_await ttg::device::select(db, in.buffer(), left.coeffs().buffer(), center.coeffs().buffer(),
+                                  right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
+                                  phibar.buffer(), phi.buffer(), tmp);
+      auto& D = *db.current_device_ptr();
+      submit_derivative_kernel(D, key, left.current_view(), center.current_view(), right.current_view(),
+                              operators.current_view(), result.current_view(), phi.current_view(),
+                              phibar.current_view(), tmp.current_device_ptr(), N, K, g1, g2, axis,
+                              is_bdy, bc_left, bc_right, ttg::device::current_stream());
+
+      co_await ttg::device::send<0>(key, std::move(result));
+    }
   };
 
-  return ttg::make_tt<Space>(std::move(derivative_fn),
+  auto deriv_tt = ttg::make_tt<Space>(std::move(derivative_fn),
                              ttg::edges(left, center, right),
                              ttg::edges(result),
                              name);
+
+  return std::make_tuple(std::move(deriv_tt),
+                         std::move(dispatch_tt));
 }
 
 // computes from bottom up
