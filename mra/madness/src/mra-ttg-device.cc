@@ -874,12 +874,12 @@ auto make_norm(size_type N, size_type K,
                          std::move(dispatch_tt));
 }
 
-template <typename T, Dimension NDIM, class G1, class G2>
+template <typename T, Dimension NDIM>
 auto make_derivative(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in,
                ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
-               const G1& g1,
-               const G2& g2,
+               const T g1,
+               const T g2,
                const size_type axis,
                const int bc_left,
                const int bc_right,

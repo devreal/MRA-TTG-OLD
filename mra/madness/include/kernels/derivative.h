@@ -16,7 +16,7 @@ namespace mra {
   template<mra::Dimension NDIM>
   SCOPE size_type derivative_tmp_size(size_type K) {
     const size_type K2NDIM = std::pow(K,NDIM);
-    return 3*K2NDIM; // workspace, _result, and deriv_tmp
+    return 3*K2NDIM + 4*K; // workspace, _result, and deriv_tmp, bv_left, bv_right, bdy_fn, bdy_t
   }
   namespace detail {
 
@@ -111,7 +111,7 @@ namespace mra {
       deriv.reduce_rank(thresh);
     }
 
-    template <typename T, Dimension NDIM, class G1, class G2>
+    template <typename T, Dimension NDIM>
     DEVSCOPE void derivative_boundary(
       const Domain<NDIM>& D,
       const Key<NDIM>& key,
@@ -122,11 +122,16 @@ namespace mra {
       TensorView<T, NDIM>& deriv,
       TensorView<T, NDIM>& tmp_result,
       TensorView<T, NDIM>& _result,
+      TensorView<T, NDIM>& bdry_t,
+      TensorView<T, 1>& bdy_fn,
+      TensorView<T, 1>& bv_left,
+      TensorView<T, 1>& bv_right,
+      TensorView<T, 1>& slice_aid,
       const TensorView<T, 2>& phi,
       const TensorView<T, 2>& phibar,
       const TensorView<T, 2>& quad_x,
-      const G1& g1,
-      const G2& g2,
+      const T g1,
+      const T g2,
       const int bdy,
       const int bc_left,
       const int bc_right,
@@ -161,9 +166,57 @@ namespace mra {
       deriv.reduce_rank(thresh);
 
 
-    }
+      init_bv(K, bc_left, bc_right, bv_left, bv_right);
 
-    template <typename T, Dimension NDIM, class G1, class G2>
+      if (l[axis] == 0){
+        if (bc_left != FunctionData<T, NDIM>::BC_PERIODIC && bc_left != FunctionData<T, NDIM>::BC_FREE &&
+            bc_left != FunctionData<T, NDIM>::BC_ZERO && bc_left != FunctionData<T, NDIM>::BC_ZERONEUMANN){
+              bdy_fn = bv_left;
+        }
+      }
+
+      else {
+        if (bc_right != FunctionData<T, NDIM>::BC_PERIODIC && bc_right != FunctionData<T, NDIM>::BC_FREE &&
+            bc_right != FunctionData<T, NDIM>::BC_ZERO && bc_right != FunctionData<T, NDIM>::BC_ZERONEUMANN){
+              bdy_fn = bv_right;
+        }
+      }
+      _result = 0;
+      tmp_result = 0;
+      slice_aid[0] = 1;
+      // inner(slice_aid, tmp_result, _result, 0, axis); /// dimension error in inner
+      tmp_result = 0;
+      // outer(bdy_fn, _result, tmp_result); /// dimension error in outer
+      // if(axis) cycledim(tmp_result, bdry_t, axis, 0, axis);
+
+      scale = D.template get_reciprocal_width<T>(axis);
+      bdry_t *= scale;
+
+      if (l[axis] == 0){
+        if (bc_left == FunctionData<T, NDIM>::BC_DIRICHLET){
+          scale = pow(T(2), T(key.level()));
+          bdry_t *= scale;
+        }
+        else if (bc_left == FunctionData<T, NDIM>::BC_NEUMANN){
+          scale = D.template get_reciprocal_width<T>(axis);
+          bdry_t *= scale;
+          }
+        }
+      else{
+        if (bc_left == FunctionData<T, NDIM>::BC_DIRICHLET){
+          scale = pow(T(2), T(key.level()));
+          bdry_t *= scale;
+        }
+        else if (bc_left == FunctionData<T, NDIM>::BC_NEUMANN){
+          scale = D.template get_reciprocal_width<T>(axis);
+          bdry_t *= scale;
+          }
+        }
+
+        deriv += bdry_t;
+      }
+
+    template <typename T, Dimension NDIM>
     DEVSCOPE void derivative_kernel_impl(
       const Domain<NDIM>& D,
       const Key<NDIM>& key,
@@ -177,8 +230,8 @@ namespace mra {
       const TensorView<T, 2>& quad_x,
       T* tmp,
       size_type K,
-      const G1& g1,
-      const G2& g2,
+      const T g1,
+      const T g2,
       size_type axis,
       const bool is_bdy,
       const int bc_left,
@@ -186,30 +239,44 @@ namespace mra {
       {
         // if we reached here, all checks have passed, and we do the transform to compute the derivative
         // for a given axis by calling either derivative_inner() or derivative_boundary()
+        SHARED TensorView<T, NDIM> deriv_tmp, _result;
+        SHARED T* workspace;
+
+        size_type blockId = blockIdx.x;
+        T* block_tmp_ptr = &tmp[blockId*derivative_tmp_size<NDIM>(K)];
+        const size_type K2NDIM = std::pow(K, NDIM);
+        if(is_team_lead()){
+          deriv_tmp = TensorView<T, NDIM>(&block_tmp_ptr[       0], K);
+          _result   = TensorView<T, NDIM>(&block_tmp_ptr[1*K2NDIM], K);
+          workspace = &block_tmp_ptr[2*K2NDIM];
+        }
+        SYNCTHREADS();
+
         if (is_bdy){
           // derivative_boundary()
-        }
-        else{
-
-          SHARED TensorView<T, NDIM> deriv_tmp, _result;
-          SHARED T* workspace;
-
-          size_type blockId = blockIdx.x;
-          T* block_tmp_ptr = &tmp[blockId*derivative_tmp_size<NDIM>(K)];
+          SHARED TensorView<T, 1> bdy_fn, bv_left, bv_right, slice_aid;
+          SHARED TensorView<T, NDIM> bdry_t;
           if(is_team_lead()){
-            const size_type K2NDIM = std::pow(K, NDIM);
-            deriv_tmp = TensorView<T, NDIM>(&block_tmp_ptr[       0], K);
-            _result   = TensorView<T, NDIM>(&block_tmp_ptr[1*K2NDIM], K);
-            workspace = &block_tmp_ptr[2*K2NDIM];
+            bdry_t    = TensorView<T, 1>(&block_tmp_ptr[      4*K2NDIM], K);
+            bdy_fn    = TensorView<T, 1>(&block_tmp_ptr[      5*K2NDIM], K);
+            bv_left   = TensorView<T, 1>(&block_tmp_ptr[4*K2NDIM + 1*K], K);
+            bv_right  = TensorView<T, 1>(&block_tmp_ptr[4*K2NDIM + 2*K], K);
+            slice_aid = TensorView<T, 1>(&block_tmp_ptr[4*K2NDIM + 3*K], K);
           }
           SYNCTHREADS();
+
+          derivative_boundary<T, NDIM>(D, key, node_left, node_center, node_right,
+            operators, deriv, deriv_tmp, _result, bdy_fn, bdry_t, bv_left, bv_right,
+            slice_aid, phi, phibar, quad_x, g1, g2, bc_left, bc_right, axis, K, workspace);
+        }
+        else{
 
           derivative_inner<T, NDIM>(D, key, node_left, node_center, node_right,
             operators, deriv, deriv_tmp, _result, phi, phibar, quad_x, bc_left, bc_right, axis, K, workspace);
         }
       }
 
-    template <typename T, Dimension NDIM, class G1, class G2>
+    template <typename T, Dimension NDIM>
     GLOBALSCOPE void derivative_kernel(
       const Domain<NDIM>& D,
       const Key<NDIM>& key,
@@ -224,8 +291,8 @@ namespace mra {
       T* tmp,
       size_type N,
       size_type K,
-      const G1 g1,
-      const G2 g2,
+      const T g1,
+      const T g2,
       size_type axis,
       const bool is_bdy,
       const int bc_left,
@@ -246,7 +313,7 @@ namespace mra {
 
   } // namespace detail
 
-  template <typename T, Dimension NDIM, class G1, class G2>
+  template <typename Fn, typename T, Dimension NDIM>
   void submit_derivative_kernel(
     const Domain<NDIM>& D,
     const Key<NDIM>& key,
@@ -261,8 +328,8 @@ namespace mra {
     T* tmp,
     size_type N,
     size_type K,
-    const G1& g1,
-    const G2& g2,
+    const T g1,
+    const T g2,
     size_type axis,
     const bool is_bdy,
     const int bc_left,
@@ -274,7 +341,7 @@ namespace mra {
 
     CALL_KERNEL(detail::derivative_kernel, N, thread_dims, 0, stream,
       (D, key, node_left, node_center, node_right, operators,
-        deriv, phi, phibar, quad_x, tmp, N, K, axis, is_bdy, bc_left, bc_right));
+        deriv, phi, phibar, quad_x, tmp, N, K, g1, g2, axis, is_bdy, bc_left, bc_right));
     checkSubmit();
   }
 
