@@ -16,7 +16,7 @@ namespace mra {
   template<mra::Dimension NDIM>
   SCOPE size_type derivative_tmp_size(size_type K) {
     const size_type K2NDIM = std::pow(K,NDIM);
-    return 3*K2NDIM + 4*K; // workspace, _result, and deriv_tmp, bv_left, bv_right, bdy_fn, bdy_t
+    return 3*K2NDIM; // workspace, _result, and deriv_tmp
   }
   namespace detail {
 
