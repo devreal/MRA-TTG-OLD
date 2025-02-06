@@ -33,6 +33,7 @@ namespace mra {
         Tensor<T,2> phibar;         // phibar(mu,i) = w[mu]*phi(x[mu],i)
         Tensor<T,2> HG;             // Two scale filter applied from left to scaling function coeffs
         Tensor<T,2> HGT;            // Two scale filter applied from right to scaling function coeffs
+        Tensor<T,1> quad_x;         // Quadrature points on level 0
         std::unique_ptr<T[]> x, w;  // Quadrature points and weights on level 0
         Tensor<T, 2+1> operators;   // Derivative operators
         BCType bc_left, bc_right;
@@ -198,6 +199,15 @@ namespace mra {
             // std::cout << r << std::endl; // should be identify matrix
         }
 
+        void make_quad_x() {
+            auto quad_x_view = quad_x.current_view();
+            const T *x, *w;
+            GLget(&x, &w, K);
+            for (size_type i = 0; i < K; ++i) {
+                quad_x_view(i) = x[i];
+            }
+        }
+
     public:
 
         FunctionData(size_type K)
@@ -212,6 +222,7 @@ namespace mra {
             make_phi();
             make_phiT();
             make_phibar();
+            make_quad_x();
             twoscale_get(K, HG.data());
             auto HG_view  = HG.current_view();
             auto HGT_view = HGT.current_view();
@@ -231,6 +242,7 @@ namespace mra {
         const auto& get_phi() const {return phi;}
         const auto& get_phiT() const {return phiT;}
         const auto& get_phibar() const {return phibar;}
+        const auto& get_quad_x() const {return quad_x;}
         const auto& get_hg() const {return HG;}
         const auto& get_hgT() const {return HGT;}
         const auto& get_operators() const {return operators;}

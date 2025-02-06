@@ -891,11 +891,11 @@ auto make_derivative(size_type N, size_type K,
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> center;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> right;
 
-  auto dispatch_fn = [](const mra::Key<NDIM>& key,
+  auto dispatch_fn = [&, axis](const mra::Key<NDIM>& key,
                         const mra::FunctionsReconstructedNode<T, NDIM>& in_node) -> TASKTYPE {
 
     auto sends = ttg::device::forward(); // collection of send operations in this task
-    sends.push_back(ttg::device::send<1>(key, in));
+    sends.push_back(ttg::device::send<1>(key, in_node));
 
     auto l = key.translation();
     auto n = key.level();
@@ -913,7 +913,7 @@ auto make_derivative(size_type N, size_type K,
     }// else send an empty node
 
     if (has_left){
-      auto l_right = l;
+      auto l_left = l;
       l_left[axis] -= 1;
       mra::Key<NDIM> left_key = Key<NDIM>(n, l_left);
       sends.push_back(ttg::device::send<2>(left_key, in_node));
@@ -937,14 +937,14 @@ auto make_derivative(size_type N, size_type K,
       if (!left.empty()){
         auto l = key.translation();
         l[axis] -= 1; // not right, need a function to do this
-        mra::Key<NDIM> key_left = Key<NDIM(key.level()+1)>;
+        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1);
         sends.push_back(ttg::device::send<0>(key_left, left));
       }
 
       if (!right.empty()){
         auto l = key.translation();
         l[axis] += 1; // not right, need a function to do this
-        mra::Key<NDIM> key_right = Key<NDIM(key.level()+1)>;
+        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1);
         sends.push_back(ttg::device::send<0>(key_right, right));
       }
       co_await std::move(sends);
@@ -957,10 +957,11 @@ auto make_derivative(size_type N, size_type K,
       Tensor<T, 2+1>& operators = functiondata.get_operators();
       Tensor<T, 2>& phibar= functiondata.get_phibar();
       Tensor<T, 2>& phi= functiondata.get_phi();
+      Tensor<T, 1>& quad_x = functiondata.get_quad_x();
 
       co_await ttg::device::select(db, in.buffer(), left.coeffs().buffer(), center.coeffs().buffer(),
                                   right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
-                                  phibar.buffer(), phi.buffer(), tmp);
+                                  phibar.buffer(), phi.buffer(), quad_x.buffer(), tmp);
       auto& D = *db.current_device_ptr();
       submit_derivative_kernel(D, key, left.current_view(), center.current_view(), right.current_view(),
                               operators.current_view(), result.current_view(), phi.current_view(),

@@ -173,6 +173,7 @@ namespace mra {
       TensorView<T, NDIM>& deriv,
       const TensorView<T, 2>& phi,
       const TensorView<T, 2>& phibar,
+      const TensorView<T, 1>& quad_x,
       T* tmp,
       size_type K,
       const T g1,
@@ -203,7 +204,7 @@ namespace mra {
         }
         else{
           derivative_inner<T, NDIM>(D, key, node_left, node_center, node_right,
-            operators, deriv, deriv_tmp, _result, phi, phibar, bc_left, bc_right, axis, K, workspace);
+            operators, deriv, deriv_tmp, _result, phi, phibar, quad_x, bc_left, bc_right, axis, K, workspace);
         }
       }
 
@@ -218,6 +219,7 @@ namespace mra {
       TensorView<T, NDIM+1> deriv,
       const TensorView<T, 2> phi,
       const TensorView<T, 2> phibar,
+      const TensorView<T, 1>& quad_x,
       T* tmp,
       size_type N,
       size_type K,
@@ -237,7 +239,7 @@ namespace mra {
         }
         SYNCTHREADS();
         derivative_kernel_impl<T, NDIM>(D, node_left_view, node_center_view, node_right_view,
-          operators, deriv, phi, phibar, tmp, K, g1, g2, axis, is_bdy, bc_left, bc_right);
+          operators, deriv, phi, phibar, quad_x, tmp, K, g1, g2, axis, is_bdy, bc_left, bc_right);
       }
     }
 
@@ -254,6 +256,7 @@ namespace mra {
     TensorView<T, NDIM+1>& deriv,
     const TensorView<T, 2>& phi,
     const TensorView<T, 2>& phibar,
+    const TensorView<T, 1>& quad_x,
     T* tmp,
     size_type N,
     size_type K,
@@ -270,7 +273,7 @@ namespace mra {
 
     CALL_KERNEL(detail::derivative_kernel, N, thread_dims, 0, stream,
       (D, key, node_left, node_center, node_right, operators,
-        deriv, phi, phibar, tmp, N, K, g1, g2, axis, is_bdy, bc_left, bc_right));
+        deriv, phi, phibar, quad_x, tmp, N, K, g1, g2, axis, is_bdy, bc_left, bc_right));
     checkSubmit();
   }
 
