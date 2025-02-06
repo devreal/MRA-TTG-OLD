@@ -965,7 +965,7 @@ auto make_derivative(size_type N, size_type K,
       auto& D = *db.current_device_ptr();
       submit_derivative_kernel(D, key, left.current_view(), center.current_view(), right.current_view(),
                               operators.current_view(), result.current_view(), phi.current_view(),
-                              phibar.current_view(), tmp.current_device_ptr(), N, K, g1, g2, axis,
+                              phibar.current_view(), quad_x.current_view(), tmp.current_device_ptr(), N, K, g1, g2, axis,
                               is_bdy, bc_left, bc_right, ttg::device::current_stream());
 
       co_await ttg::device::send<0>(key, std::move(result));
