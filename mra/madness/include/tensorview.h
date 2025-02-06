@@ -576,11 +576,19 @@ namespace mra {
     const const_iterator<ndim()> end() const { return const_iterator<ndim()>(size(), *this); }
 
     TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
-      return iterator(this, iterlevel, jdim);
+      return {this, iterlevel, jdim};
+    }
+
+    TensorIterator<const TensorView> unary_iterator(IterLevel iterlevel, ssize_type jdim = TensorIterator<TensorView>::default_jdim) const {
+      return {this, iterlevel, jdim};
     }
 
     TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, bool fusedim, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
-      return iterator(this, iterlevel, jdim);
+      return {this, iterlevel, jdim};
+    }
+
+    TensorIterator<const TensorView> unary_iterator(IterLevel iterlevel, bool fusedim, ssize_type jdim = TensorIterator<TensorView>::default_jdim) const {
+      return {this, iterlevel, jdim};
     }
 
   private:

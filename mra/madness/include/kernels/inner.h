@@ -29,7 +29,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimj = right.stride(0);
         long dimi = left.stride(0);
-        mTxm(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
+        mTxm(dimi,dimj,dimk,result.data(),left.data(),right.data());
         return;
       }
       else if (k0==(left.ndim()-1) && k1==(right.ndim()-1)) {
@@ -37,7 +37,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.size()/dimk;
-        mxmT(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
+        mxmT(dimi,dimj,dimk,result.data(),left.data(),right.data());
         return;
       }
       else if (k0==0 && k1==(right.ndim()-1)) {
@@ -45,7 +45,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.stride(0);
         long dimj = right.size()/dimk;
-        mTxmT(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
+        mTxmT(dimi,dimj,dimk,result.data(),left.data(),right.data());
         return;
       }
       else if (k0==(left.ndim()-1) && k1==0) {
@@ -53,26 +53,26 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.stride(0);
-        mxm(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
+        mxm(dimi,dimj,dimk,result.data(),left.data(),right.data());
         return;
       }
 
       // TODO: use more than the first slice of threads in z here
       if (threadIdx.z == 0) {
         size_type dimj = left.dim(k0);
-        auto iter1 = right.unary_iterator(1, false, k1);
+        auto iter1 = right.unary_iterator(IterLevel::Vector, false, k1);
         T* ptr = result.data();
-        for (auto iter0 = left.unary_iterator(1, false, k0);
-             iter0.ptr() != nullptr;
+        for (auto iter0 = left.unary_iterator(IterLevel::Vector, false, k0);
+             iter0.data() != nullptr;
              ++iter0, ptr += iter1.size()) {
-          T* __restrict__ xp0 = iter0.ptr();
+          const T* __restrict__ xp0 = iter0.data();
           ssize_type s0 = iter0.s0();
           iter1.reset();
           for (iter1 += thread_id();
-               iter1.ptr() != nullptr;
+               iter1.data() != nullptr;
                iter1 += blockDim.x*blockDim.y, ptr += blockDim.x*blockDim.y) {
-            T* __restrict__ p0 = xp0;
-            T* __restrict__ p1 = iter1.ptr();
+            const T* __restrict__ p0 = xp0;
+            const T* __restrict__ p1 = iter1.data();
             ssize_type s1 = iter1.s0();
             T sum = 0;
             for (size_type j=0; j<dimj; ++j, p0+=s0, p1+=s1) {

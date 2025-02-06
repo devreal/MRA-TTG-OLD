@@ -954,11 +954,11 @@ auto make_derivative(size_type N, size_type K,
                                          "derivative-dispatch");
 
 
-  auto derivative_fn = [&, N, K, g1, g2, axis, bc_left, bc_right](const mra::Key<NDIM>& key,
+  auto derivative_fn = [&, N, K, g1, g2, axis, bc_left, bc_right](
+                              const mra::Key<NDIM>& key,
                               const mra::FunctionsReconstructedNode<T, NDIM>& left,
                               const mra::FunctionsReconstructedNode<T, NDIM>& center,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& right,
-                              const mra::Tensor<T, 1>& in) -> TASKTYPE {
+                              const mra::FunctionsReconstructedNode<T, NDIM>& right) -> TASKTYPE {
 #ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(); // collection of send operations in this task
 #endif

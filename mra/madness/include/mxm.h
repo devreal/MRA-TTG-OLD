@@ -193,7 +193,7 @@ namespace mra{
    * c(i,j) = sum(k) a(k,i)*b(j,k)
    */
   template <typename aT, typename bT, typename cT>
-  SCOPE void mTxmT(size_type dimi, size_type dimj, size_type dimk,
+  SCOPE void mTxmTq(size_type dimi, size_type dimj, size_type dimk,
                    cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
     mTxmT<aT, bT, cT, true>(dimi, dimj, dimk, c, a, b, ldb);
   }

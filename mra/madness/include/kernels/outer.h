@@ -22,8 +22,8 @@ namespace mra{
 
       if (threadIdx.z == 0) {
         T* ptr = result.ptr();
-        auto iter = right.unary_iterator(1, false, 0);
-        for (auto iter0=left.unary_iterator(1, false, 0);
+        auto iter = right.unary_iterator(IterLevel::Vector, false, 0);
+        for (auto iter0=left.unary_iterator(IterLevel::Vector, false, 0);
             iter0.ptr() != nullptr;
             ++iter0) {
           T val = *iter0;

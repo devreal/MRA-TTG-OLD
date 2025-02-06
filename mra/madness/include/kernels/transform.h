@@ -39,21 +39,21 @@ namespace mra {
     TensorView<T, NDIM>& result,
     size_type axis) {
       if (axis == 0){
-        detail::inner<T, 2, 3>(op, node, result, 0, axis);
+        detail::inner(op, node, result, 0, axis);
       }
       else if (axis == node.ndim()-1){
-        detail::inner<T, 3, 2>(node, op, result, axis, 0);
+        detail::inner(node, op, result, axis, 0);
       }
       else {
-        detail::inner<T, 3, 2>(node, op, tmp_result, axis, 0);
+        detail::inner(node, op, tmp_result, axis, 0);
         detail::cycledim(tmp_result, result, 1, axis, -1); // copy to make contiguous
       }
     }
 
-  template <typename T, Dimension NDIM>
+  template <typename T, Dimension NDIM, std::size_t ARRDIM = NDIM>
   SCOPE void general_transform(
     const TensorView<T, NDIM>& t,
-    const std::array<TensorView<T, 2>, NDIM>& c,
+    const std::array<TensorView<T, 2>, ARRDIM>& c,
     TensorView<T, NDIM>& result)
     {
       result = t;

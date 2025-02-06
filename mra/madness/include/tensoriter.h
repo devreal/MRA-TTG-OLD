@@ -11,7 +11,9 @@ namespace mra {
   template<typename TensorView>
   struct TensorIterator {
     using tensor_type = TensorView;
-    using value_type  = typename TensorView::value_type;
+    using value_type  = std::conditional_t<std::is_const_v<TensorView>,
+                                           typename TensorView::const_value_type,
+                                           typename TensorView::value_type>;
   private:
     std::array<ssize_type, TensorView::ndim()> m_idx;
     Dimension m_ndim = TensorView::ndim();
@@ -40,10 +42,10 @@ namespace mra {
 
   public:
     constexpr static ssize_type default_jdim = std::numeric_limits<ssize_type>::max();
-    SCOPE TensorIterator(const TensorView* t0,
+    SCOPE TensorIterator(TensorView* t0,
                          IterLevel iterlevel,
                          ssize_type jdim = default_jdim)
-    : m_t0(&t0)
+    : m_t0(t0)
     , m_jdim(jdim)
     {
       if (!t0) {
@@ -128,6 +130,14 @@ namespace mra {
     SCOPE void reset() {
       std::fill(m_idx.begin(), m_idx.end(), 0);
       m_p0 = m_t0->data();
+    }
+
+    SCOPE value_type* data() {
+      return m_p0;
+    }
+
+    SCOPE const value_type* data() const {
+      return m_p0;
     }
 
     /**

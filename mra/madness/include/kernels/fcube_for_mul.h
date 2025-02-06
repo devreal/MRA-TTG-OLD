@@ -78,7 +78,7 @@ namespace mra {
         phi_for_mul<T, NDIM>(parent.level(), child.level(), parent_l[d], child_l[d], phi_views[d], quad_x, K);
       }
 
-      general_transform<T, NDIM>(coeffs, phi_views, result_values);
+      general_transform(coeffs, phi_views, result_values);
       T scale = T(1)/sqrt(D.template get_volume<T>());
       result_values *= scale;
 #ifndef HAVE_DEVICE_ARCH
