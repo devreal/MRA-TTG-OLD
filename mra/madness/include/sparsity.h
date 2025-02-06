@@ -79,7 +79,7 @@ namespace mra {
     , m_data(new unit_type[num_units(count)])
     , m_owned(true)
     {
-      std::fill(m_data, m_data+num_units(count), SparsityType::SPARSE);
+      set_all_zero();
     }
 
     /* creates a non-owning Sparsity object */
@@ -178,6 +178,13 @@ namespace mra {
       if (m_data[id] == SparsityType::NONZERO) {
         m_data[id] = SparsityType::ALLOCATED;
       }
+    }
+
+    /**
+     * Mark all ids as allocated and non-zero.s
+     */
+    void set_all_zero() {
+      std::fill(m_data, m_data+m_count, SparsityType::SPARSE);
     }
 
     /**
@@ -544,6 +551,11 @@ namespace mra {
      */
     void set_allocated(size_type id) {
       add(id, m_allocated_ranges);
+    }
+
+    void set_all_zero() {
+      m_non_zero_ranges.clear();
+      m_allocated_ranges.clear();
     }
 
     /**

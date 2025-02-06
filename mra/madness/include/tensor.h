@@ -205,29 +205,35 @@ namespace mra {
       serialize(ar);
     }
 
+    const sparsity_type& sparsity() const {
+      return m_sparsity;
+    }
+
     /* Transfer sparsity information from host to device.
      * Call \sa complete_transfer() once the stream has been synchronized. */
-    void transfer_sparsity_to_device(ttg::device::Stream stream) const {
+    void transfer_sparsity_to_device() const {
       if constexpr (is_sparse()) {
         /* TODO: fix allocation */
         m_sparsity_stage = Allocator().allocate(SparsityArray::num_values(m_dims[0]));
         SparsityArray<T> sparsity(m_sparsity_stage, m_dims[0]);
         sparsity.apply(m_sparsity);
         /* TODO: encapsulate this */
-        cudaMemcpyAsync(m_buffer.current_device_ptr(), m_sparsity_stage, m_sparsity.num_values(m_dims[0]), cudaMemcpyHostToDevice, stream);
+        cudaMemcpyAsync(m_buffer.current_device_ptr(), m_sparsity_stage, m_sparsity.num_values(m_dims[0]),
+                        cudaMemcpyHostToDevice, ttg::device::current_stream());
         m_transfer_dir = TransferDir::HOST_TO_DEVICE;
       }
     }
 
     /* Transfer sparsity information from device to host.
      * Call \sa complete_transfer() once the stream has been synchronized. */
-    void transfer_sparsity_to_host(ttg::device::Stream stream) const {
+    void transfer_sparsity_to_host() const {
       if constexpr (is_sparse()) {
         /* TODO: fix allocation */
         m_sparsity_stage = Allocator().allocate(SparsityArray::num_values(m_dims[0]));
         SparsityArray<T> sparsity(m_sparsity_stage, m_dims[0]);
         /* TODO: encapsulate this */
-        cudaMemcpyAsync(m_sparsity_stage, m_buffer.current_device_ptr(), m_sparsity.num_values(m_dims[0]), cudaMemcpyDeviceToHost, stream);
+        cudaMemcpyAsync(m_sparsity_stage, m_buffer.current_device_ptr(), m_sparsity.num_values(m_dims[0]),
+                       cudaMemcpyDeviceToHost, ttg::device::current_stream());
         m_transfer_dir = TransferDir::DEVICE_TO_HOST;
       }
     }

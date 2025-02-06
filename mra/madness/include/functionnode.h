@@ -28,10 +28,14 @@ namespace mra {
     template <typename T, Dimension NDIM>
     class FunctionsReconstructedNode : public ttg::TTValue<FunctionsReconstructedNode<T, NDIM>> {
       public: // temporarily make everything public while we figure out what we are doing
-        using key_type        = Key<NDIM>;
-        using tensor_type     = SparseTensor<T,NDIM+1>;
-        using view_type       = TensorView<T, NDIM>;
-        using const_view_type = TensorView<const T, NDIM>;
+        using key_type               = Key<NDIM>;
+        using tensor_type            = SparseTensor<T,NDIM+1>;
+        using host_view_type         = typename tensor_type::host_view_type;
+        using device_view_type       = typename tensor_type::device_view_type;
+        using const_host_view_type   = typename tensor_type::const_host_view_type;
+        using const_device_view_type = typename tensor_type::const_device_view_type;
+        using sparsity_type          = typename tensor_type::sparsity_type;
+
         static constexpr bool is_function_node = true;
 
       private:
@@ -61,10 +65,10 @@ namespace mra {
         , m_coeffs()
         { }
 
-        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K)
+        FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K, const sparsity_type& sparsity = sparsity_type(Dense<T>()))
         : m_key(key)
         , m_metadata(N)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, K))
+        , m_coeffs(sparsity, detail::make_dims<NDIM+1>(N, K))
         {}
 
 
@@ -178,6 +182,10 @@ namespace mra {
           return m_coeffs.empty();
         }
 
+        const sparsity_type& sparsity() const {
+          return m_coeffs.sparsity();
+        }
+
         template <typename Archive>
         void serialize(Archive& ar) {
           ar& this->m_key;
@@ -196,9 +204,11 @@ namespace mra {
     class FunctionsCompressedNode : public ttg::TTValue<FunctionsCompressedNode<T, NDIM>> {
       public: // temporarily make everything public while we figure out what we are doing
         static constexpr bool is_function_node = true;
-        using key_type          = Key<NDIM>;
-        using view_type         = TensorView<T, NDIM>;
-        using const_view_type   = TensorView<const T, NDIM>;
+        using key_type               = Key<NDIM>;
+        using host_view_type         = tensor_type::host_view_type;
+        using device_view_type       = tensor_type::device_view_type;
+        using const_host_view_type   = tensor_type::const_host_view_type;
+        using const_device_view_type = tensor_type::const_device_view_type;
 
       private:
         key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
@@ -217,9 +227,9 @@ namespace mra {
           set_all_child_leafs(true);
         }
 
-        FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K)
+        FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K, const sparsity_type& sparsity = sparsity_type(Dense<T>()))
         : m_key(key)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K))
+        , m_coeffs(sparsity, detail::make_dims<NDIM+1>(N, 2*K))
         , m_is_child_leafs(N)
         { }
 
@@ -282,6 +292,10 @@ namespace mra {
 
         const auto& coeffs() const {
           return m_coeffs;
+        }
+
+        const sparsity_type& sparsity() const {
+          return m_coeffs.sparsity();
         }
 
         key_type& key() {

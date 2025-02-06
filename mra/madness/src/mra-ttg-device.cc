@@ -98,7 +98,7 @@ auto make_project(
          * TODO: figure out a way to outline this into a function or coroutine
          */
         // allocate tensor
-        result = node_type(key, N, K);
+        result = node_type(key, N, K, sparsity);
         auto& coeffs = result.coeffs();
 
         /* global function data */
@@ -122,6 +122,7 @@ auto make_project(
         co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
                                     hgT.buffer(), tmp_scratch, is_leafs_scratch);
   #endif
+        coeffs.transfer_sparsity_to_device();
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
@@ -140,6 +141,7 @@ auto make_project(
   #ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(is_leafs_scratch);
   #endif
+        coeffs.complete_sparsity_transfer();
         for (std::size_t i = 0; i < N; ++i) {
           result.is_leaf(i) = is_leafs[i];
         }
@@ -245,6 +247,21 @@ static auto make_compress(
       // create empty, may be reset if needed
       mra::FunctionsReconstructedNode<T, NDIM> p(key, N);
 
+      /**
+       * Gather sparsity from inputs and create the result sparsity
+       */
+      using sparsity_type = typename mra::FunctionsCompressedNode<T,NDIM>::sparsity_type;
+      auto sparsity = sparsity_type(N);
+      sparsity.set_all_nonzero();
+      sparsity.apply(in0.sparsity());
+      sparsity.union(in1.sparsity());
+      sparsity.union(in2.sparsity());
+      sparsity.union(in3.sparsity());
+      sparsity.union(in4.sparsity());
+      sparsity.union(in5.sparsity());
+      sparsity.union(in6.sparsity());
+      sparsity.union(in7.sparsity());
+
       /* check if all inputs are empty */
       bool all_empty = in0.empty() && in1.empty() && in2.empty() && in3.empty() &&
                        in4.empty() && in5.empty() && in6.empty() && in7.empty();
@@ -268,11 +285,11 @@ static auto make_compress(
         /* some inputs are on the device so submit a kernel */
 
         // allocate the result
-        result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+        result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, sparsity);
         auto& d = result.coeffs();
         // Collect child leaf info
         mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
-        p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+        p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K, sparsity);
         p.set_all_leaf(false);
         assert(p.is_all_leaf() == false);
 
@@ -319,6 +336,8 @@ static auto make_compress(
         auto coeffs_view = p.coeffs().current_view();
         auto rcoeffs_view = d.current_view();
         auto hgT_view = hgT.current_view();
+        result.coeffs().transfer_sparsity_to_device();
+        d.transfer_sparsity_to_device();
 
         submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
                               tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_views,
@@ -328,6 +347,9 @@ static auto make_compress(
   #ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(d_sumsq_scratch);
   #endif
+
+        d.complete_sparsity_transfer();
+        result.coeffs().complete_sparsity_transfer();
 
         for (std::size_t i = 0; i < N; ++i) {
           auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
