@@ -13,6 +13,7 @@ namespace mra {
     template <typename T, Dimension NDIM>
     class FunctionData {
 
+    public:
         enum class DerivOp {
             RM = 0, R0 = 1, RP = 2,             ///< Blocks of the derivative operator
             RMT = 3, R0T = 4, RPT = 5,          ///< Blocks of the derivative operator, transposed
@@ -27,6 +28,7 @@ namespace mra {
         enum BCType {BC_ZERO = 0, BC_PERIODIC = 1, BC_FREE = 2, BC_DIRICHLET = 3, BC_ZERONEUMANN = 4, BC_NEUMANN = 5};
         // NOTE: In the current v, we only consider Dirichlet boundary conditions.
 
+    private:
         size_type K;
         Tensor<T,2> phi;            // phi(mu,i) = phi(x[mu],i) --- value of scaling functions at quadrature points on level 0
         Tensor<T,2> phiT;           // transpose of phi

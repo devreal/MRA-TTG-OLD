@@ -5,20 +5,21 @@
 #include "types.h"
 #include "tensorview.h"
 #include "tensor.h"
+#include <cassert>
 
 namespace mra{
 
   namespace detail{
 
-    template <typename T, Dimension NDIM>
+    template <typename T, Dimension NDIM1, Dimension NDIM2>
     SCOPE void inner(
-      const TensorView<T, NDIM>& left,
-      const TensorView<T, NDIM>& right,
-      TensorView<T, NDIM>& result,
+      const TensorView<T, NDIM1>& left,
+      const TensorView<T, NDIM2>& right,
+      TensorView<T, NDIM1+NDIM2-2>& result,
       long k0 = -1,
       long k1 = 0)
     {
-      static_assert(left.dim(k0) == right.dim(k1), "inner: common index must have the same length");
+      assert(left.dim(k0) == right.dim(k1));
 
       if (k0 < 0) k0 += left.ndim();
       if (k1 < 0) k1 += right.ndim();
@@ -28,7 +29,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimj = right.stride(0);
         long dimi = left.stride(0);
-        mTxm(dimi,dimj,dimk,ptr,left.ptr(),right.ptr());
+        mTxm(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
         return;
       }
       else if (k0==(left.ndim()-1) && k1==(right.ndim()-1)) {
@@ -36,7 +37,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.size()/dimk;
-        mxmT(dimi,dimj,dimk,ptr,left.ptr(),right.ptr());
+        mxmT(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
         return;
       }
       else if (k0==0 && k1==(right.ndim()-1)) {
@@ -44,7 +45,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.stride(0);
         long dimj = right.size()/dimk;
-        mTxmT(dimi,dimj,dimk,ptr,left.ptr(),right.ptr());
+        mTxmT(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
         return;
       }
       else if (k0==(left.ndim()-1) && k1==0) {
@@ -52,7 +53,7 @@ namespace mra{
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.stride(0);
-        mxm(dimi,dimj,dimk,ptr,left.ptr(),right.ptr());
+        mxm(dimi,dimj,dimk,result.ptr(),left.ptr(),right.ptr());
         return;
       }
 

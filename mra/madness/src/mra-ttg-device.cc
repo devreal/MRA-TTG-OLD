@@ -877,7 +877,7 @@ auto make_norm(size_type N, size_type K,
 template <typename T, Dimension NDIM>
 auto make_derivative(size_type N, size_type K,
                ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in,
-               ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
+               ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result,
                const mra::FunctionData<T, NDIM>& functiondata,
                const ttg::Buffer<mra::Domain<NDIM>>& db,
                const T g1,
@@ -894,8 +894,12 @@ auto make_derivative(size_type N, size_type K,
   auto dispatch_fn = [&, axis](const mra::Key<NDIM>& key,
                         const mra::FunctionsReconstructedNode<T, NDIM>& in_node) -> TASKTYPE {
 
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(); // collection of send operations in this task
     sends.push_back(ttg::device::send<1>(key, in_node));
+#else
+    ttg::send<1>(key, in_node);
+#endif
 
     auto l = key.translation();
     auto n = key.level();
@@ -909,15 +913,39 @@ auto make_derivative(size_type N, size_type K,
       auto l_right = l;
       l_right[axis] += 1;
       mra::Key<NDIM> right_key = Key<NDIM>(n, l_right);
+#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<0>(right_key, in_node));
-    }// else send an empty node
+#else
+      ttg::send<0>(right_key, in_node);
+#endif
+    }
+    else{
+#ifndef MRA_ENABLE_HOST
+      // send an empty node if there is no right node
+      sends.push_back(ttg::device::send<2>(key, mra::FunctionsReconstructedNode<T, NDIM>()));
+#else
+      ttg::send<2>(key, mra::FunctionsReconstructedNode<T, NDIM>());
+#endif
+    }
 
     if (has_left){
       auto l_left = l;
       l_left[axis] -= 1;
       mra::Key<NDIM> left_key = Key<NDIM>(n, l_left);
+#ifndef MRA_ENABLE_HOST
       sends.push_back(ttg::device::send<2>(left_key, in_node));
-    }// else send an empty node
+#else
+      ttg::send<2>(left_key, in_node);
+#endif
+    }
+    else{
+#ifndef MRA_ENABLE_HOST
+      // send an empty node if there is no left node
+      sends.push_back(ttg::device::send<0>(key, mra::FunctionsReconstructedNode<T, NDIM>()));
+#else
+      ttg::send<0>(key, mra::FunctionsReconstructedNode<T, NDIM>());
+#endif
+    }
   };
 
   auto dispatch_tt = ttg::make_tt<Space>(std::move(dispatch_fn),
@@ -931,45 +959,133 @@ auto make_derivative(size_type N, size_type K,
                               const mra::FunctionsReconstructedNode<T, NDIM>& center,
                               const mra::FunctionsReconstructedNode<T, NDIM>& right,
                               const mra::Tensor<T, 1>& in) -> TASKTYPE {
+#ifndef MRA_ENABLE_HOST
     auto sends = ttg::device::forward(); // collection of send operations in this task
+#endif
 
     if (center.empty()){
       if (!left.empty()){
         auto l = key.translation();
         l[axis] -= 1; // not right, need a function to do this
-        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1);
+        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
         sends.push_back(ttg::device::send<0>(key_left, left));
+#else
+        ttg::send<0>(key_left, left);
+#endif
       }
 
       if (!right.empty()){
         auto l = key.translation();
         l[axis] += 1; // not right, need a function to do this
-        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1);
+        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
         sends.push_back(ttg::device::send<0>(key_right, right));
+#else
+        ttg::send<0>(key_right, right);
+#endif
       }
-      co_await std::move(sends);
     }
+    // center is not empty
     else {
+      /*left is empty and we are not on the boundary, send self one
+      level down & if right not empty, send the right neighbor as well*/
+      if (left.empty() && key.translation()[axis] != 0){
+        auto l = key.translation();
+        l[axis] -= 1; // not right, need a function to do this
+        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
+        sends.push_back(ttg::device::send<1>(key_left, center));
+        sends.push_back(ttg::device::send<2>(key_left, center));
+#else
+        ttg::send<1>(key_left, center);
+        ttg::send<2>(key_left, center);
+#endif
 
-      bool is_bdy = false;
-      mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
-      ttg::Buffer<T> tmp = ttg::Buffer<T>(derivative_tmp_size<NDIM>(K)*N);
-      Tensor<T, 2+1>& operators = functiondata.get_operators();
-      Tensor<T, 2>& phibar= functiondata.get_phibar();
-      Tensor<T, 2>& phi= functiondata.get_phi();
-      Tensor<T, 1>& quad_x = functiondata.get_quad_x();
+        l = key.translation();
+        l[axis] += 1;
+        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
+        sends.push_back(ttg::device::send<1>(key_right, center));
+        sends.push_back(ttg::device::send<0>(key_right, center));
+#else
+        ttg::send<1>(key_right, center);
+        ttg::send<0>(key_right, center);
+#endif
 
-      co_await ttg::device::select(db, in.buffer(), left.coeffs().buffer(), center.coeffs().buffer(),
-                                  right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
-                                  phibar.buffer(), phi.buffer(), quad_x.buffer(), tmp);
-      auto& D = *db.current_device_ptr();
-      submit_derivative_kernel(D, key, left.current_view(), center.current_view(), right.current_view(),
-                              operators.current_view(), result.current_view(), phi.current_view(),
-                              phibar.current_view(), quad_x.current_view(), tmp.current_device_ptr(), N, K, g1, g2, axis,
-                              is_bdy, bc_left, bc_right, ttg::device::current_stream());
+        if (!right.empty()){
+#ifndef MRA_ENABLE_HOST
+          sends.push_back(ttg::device::send<2>(key_right, right));
+#else
+          ttg::send<2>(key_right, right);
+#endif
+        }
+      }
 
-      co_await ttg::device::send<0>(key, std::move(result));
+      if (right.empty() && key.translation()[axis] != 0){
+        auto l = key.translation();
+        l[axis] += 1;
+        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
+        sends.push_back(ttg::device::send<1>(key_right, center));
+        sends.push_back(ttg::device::send<0>(key_right, center));
+#else
+        ttg::send<1>(key_right, center);
+        ttg::send<0>(key_right, center);
+#endif
+
+        l = key.translation();
+        l[axis] -= 1;
+        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+#ifndef MRA_ENABLE_HOST
+        sends.push_back(ttg::device::send<1>(key_left, center));
+        sends.push_back(ttg::device::send<2>(key_left, center));
+#else
+        ttg::send<1>(key_left, center);
+        ttg::send<2>(key_left, center);
+#endif
+
+        if (!left.empty()){
+#ifndef MRA_ENABLE_HOST
+          sends.push_back(ttg::device::send<2>(key_left, left));
+#else
+          ttg::send<2>(key_left, left);
+#endif
+        }
+      }
+
+      if (!left.empty() && !right.empty()){
+        bool is_bdy = false;
+        mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
+        ttg::Buffer<T> tmp = ttg::Buffer<T>(derivative_tmp_size<NDIM>(K)*N);
+        const Tensor<T, 2+1>& operators = functiondata.get_operators();
+        const Tensor<T, 2>& phibar= functiondata.get_phibar();
+        const Tensor<T, 2>& phi= functiondata.get_phi();
+        const Tensor<T, 1>& quad_x = functiondata.get_quad_x();
+
+#ifndef MRA_ENABLE_HOST
+        co_await ttg::device::select(db, in.buffer(), left.coeffs().buffer(), center.coeffs().buffer(),
+                                    right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
+                                    phibar.buffer(), phi.buffer(), quad_x.buffer(), tmp);
+#endif // MRA_ENABLE_HOST
+
+        auto& D = *db.current_device_ptr();
+        auto result_view = result.coeffs().current_view();
+        submit_derivative_kernel(D, key, left.key(), center.key(), right.key(), left.coeffs().current_view(),
+                                center.coeffs().current_view(), right.coeffs().current_view(), operators.current_view(),
+                                result_view, phi.current_view(), phibar.current_view(), quad_x.current_view(),
+                                tmp.current_device_ptr(), N, K, g1, g2, axis, is_bdy, bc_left, bc_right, ttg::device::current_stream());
+
+#ifndef MRA_ENABLE_HOST
+        sends.push_back(ttg::device::send<0>(key, std::move(result)));
+#else
+        ttg::send<0>(key, std::move(result));
+#endif
+      }
     }
+#ifndef MRA_ENABLE_HOST
+    co_await std::move(sends);
+#endif
   };
 
   auto deriv_tt = ttg::make_tt<Space>(std::move(derivative_fn),
@@ -991,8 +1107,11 @@ auto make_derivative(size_type N, size_type K,
 template<typename T, mra::Dimension NDIM>
 void test(std::size_t N, std::size_t K) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
-  auto D = std::make_unique<mra::Domain<NDIM>>();
-  D->set_cube(-6.0,6.0);
+  auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
+  D[0].set_cube(-6.0,6.0);
+  T g1 = 0;
+  T g2 = 0;
+  Dimension axis = 3;
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
@@ -1003,8 +1122,7 @@ void test(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> derivative_result;
 
   // define N Gaussians
-  std::vector<mra::Gaussian<T, NDIM>> gaussians;
-  gaussians.reserve(N);
+  auto gaussians = std::make_unique<mra::Gaussian<T, NDIM>[]>(N);
   // T expnt = 1000.0;
   for (int i = 0; i < N; ++i) {
     T expnt = 1500 + 1500*drand48();
@@ -1013,19 +1131,20 @@ void test(std::size_t N, std::size_t K) {
       r[d] = T(-6.0) + T(12.0)*drand48();
     }
     std::cout << "Gaussian " << i << " expnt " << expnt << std::endl;
-    gaussians.emplace_back(*D, expnt, r);
+    gaussians[i] = mra::Gaussian<T, NDIM>(D[0], expnt, r);
   }
 
   // put it into a buffer
-  auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(gaussians.data(), N);
-  auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D));
+  auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
+  auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   auto compress = make_compress(N, K, functiondata, project_result, compress_result);
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result);
   auto gaxpy = make_gaxpy(compress_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
   auto multiply = make_multiply(reconstruct_result, reconstruct_result, multiply_result, functiondata, db, N, K);
-  auto derivative = make_derivative(N, K, multiply_result, derivative_result, 0, "derivative");
+  auto derivative = make_derivative(N, K, multiply_result, derivative_result, functiondata, db, g1, g2, axis,
+                                    FunctionData<T, NDIM>::BC_DIRICHLET, FunctionData<T, NDIM>::BC_DIRICHLET, "derivative");
   auto printer =   make_printer(project_result,    "projected    ", false);
   auto printer2 =  make_printer(compress_result,   "compressed   ", false);
   auto printer3 =  make_printer(reconstruct_result,"reconstructed", false);
@@ -1147,7 +1266,7 @@ int main(int argc, char **argv) {
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
-  test_pcr<double, 3>(N, K);
+  test<double, 3>(N, K);
 
   ttg::finalize();
 }

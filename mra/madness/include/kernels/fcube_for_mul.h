@@ -8,6 +8,7 @@
 #include "domain.h"
 #include "key.h"
 #include "types.h"
+#include <cassert>
 
 namespace mra {
 
@@ -18,7 +19,7 @@ namespace mra {
     const Translation lp,
     const Translation lc,
     TensorView<T, 2>& phi,
-    const T* quad_x,
+    const TensorView<T, 1>& quad_x,
     const size_type K)
   {
     T p[200]; // TODO: fix this to come from workspace
@@ -26,7 +27,7 @@ namespace mra {
 
     for(size_type mu = 0; mu < K; ++mu) {
       T xmu = scale * (quad_x(mu) + lc) - lp;
-      static_assert(xmu > 1e-15 && xmu < 1.0 + 1e-15, "phi_for_mul: bad xmu");
+      assert(xmu > 1e-15 && xmu < 1.0 + 1e-15);
       legendre_scaling_functions(xmu, K, p);
       for (size_type i = 0; i < K; ++i) phi(i, mu) = p[i];
     }
@@ -42,11 +43,11 @@ namespace mra {
     const Key<NDIM>& parent,
     const TensorView<T,NDIM>& coeffs,
     TensorView<T, NDIM>& result_values,
-    const TensorView<T, NDIM>& phi,
+    const TensorView<T, 2>& phi_old,
     const TensorView<T, 2>& phibar,
-    const T* quad_x,
-    const size_type K
-    T* workspace,)
+    const TensorView<T, 1>& quad_x,
+    const size_type K,
+    T* workspace)
   {
     if (child.level() < parent.level()) {
       throw std::logic_error("fcube_for_mul: bad child-parent relationship");
@@ -58,14 +59,33 @@ namespace mra {
       result_values *= scale;
     }
     else {
+#ifdef HAVE_DEVICE_ARCH
+      extern SHARED T phi[];
+#else
+      T* phi = new T[K*K*NDIM];
+#endif
+      SHARED std::array<TensorView<T, 2>, NDIM> phi_views;
+      if(is_team_lead()){
+        for (int d = 0; d < NDIM; ++d){
+          phi_views[d] = TensorView<T, 2>(&phi[d*K*K], K, K);
+        }
+      }
+      SYNCTHREADS();
+
       for (size_type d=0; d < NDIM; ++d){
-        phi_for_mul(parent.level(), child.level(), parent.l[d], child.l[d], phi[d], quad_x, K);
+        auto parent_l = parent.translation();
+        auto child_l = child.translation();
+        phi_for_mul<T, NDIM>(parent.level(), child.level(), parent_l[d], child_l[d], phi_views[d], quad_x, K);
       }
 
-      general_transform(coeffs, phi, result_values);
+      general_transform<T, NDIM>(coeffs, phi_views, result_values);
       T scale = T(1)/sqrt(D.template get_volume<T>());
       result_values *= scale;
+#ifndef HAVE_DEVICE_ARCH
+      delete[] phi;
+#endif
     }
+
   }
 
 } // namespace mra
