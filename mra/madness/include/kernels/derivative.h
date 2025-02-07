@@ -17,7 +17,7 @@ namespace mra {
   template<mra::Dimension NDIM>
   SCOPE size_type derivative_tmp_size(size_type K) {
     const size_type K2NDIM = std::pow(K,NDIM);
-    return 3*K + 5*K2NDIM; // workspace, left_tmp, center_tmp, right_tmp and tmp_result, p, nn1, phi_norms
+    return 5*K2NDIM; // workspace, left_tmp, center_tmp, right_tmp and tmp_result
   }
 
   template <typename T, Dimension NDIM>
@@ -30,16 +30,13 @@ namespace mra {
     TensorView<T, NDIM>& result_tmp,
     const TensorView<T, 2>& phibar,
     const TensorView<T, 2>& phi,
-    TensorView<T, 1>& p,
-    TensorView<T, 1>& nn1,
-    TensorView<T, 1>& phi_norms,
     const TensorView<T, 1>& quad_x,
     const size_type K,
     T* tmp)
     {
       if (parent == child || parent.is_invalid() || child.is_invalid()) result = coeffs;
 
-      fcube_for_mul(D, child, parent, coeffs, result_tmp, phibar, phi, p, nn1, phi_norms, quad_x, K, tmp);
+      fcube_for_mul(D, child, parent, coeffs, result_tmp, phibar, phi, quad_x, K, tmp);
       T scale = std::sqrt(D.template get_volume<T>()*std::pow(T(0.5), T(NDIM*child.level())));
       result_tmp *= scale;
       transform(result_tmp, phibar, result, tmp);
@@ -118,9 +115,6 @@ namespace mra {
       TensorView<T, NDIM>& right_tmp,
       const TensorView<T, 2>& phi,
       const TensorView<T, 2>& phibar,
-      TensorView<T, 1>& p,
-      TensorView<T, 1>& nn1,
-      TensorView<T, 1>& phi_norms,
       const TensorView<T, 1>& quad_x,
       const int bc_left,
       const int bc_right,
@@ -128,9 +122,9 @@ namespace mra {
       size_type K,
       T* workspace)
     {
-      parent_to_child(D, key, left, node_left, left_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
-      parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
-      parent_to_child(D, key, right, node_right, right_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
+      parent_to_child(D, key, left, node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+      parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+      parent_to_child(D, key, right, node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
       deriv = 0;
 
       transform_dir(node_left, operators((int)FunctionData<T, NDIM>::DerivOp::RP), left_tmp, deriv, axis);
@@ -161,9 +155,6 @@ namespace mra {
       TensorView<T, NDIM>& right_tmp,
       const TensorView<T, 2>& phi,
       const TensorView<T, 2>& phibar,
-      TensorView<T, 1>& p,
-      TensorView<T, 1>& nn1,
-      TensorView<T, 1>& phi_norms,
       const TensorView<T, 1>& quad_x,
       const T g1,
       const T g2,
@@ -177,8 +168,8 @@ namespace mra {
       std::array<Translation, NDIM> l = key.translation();
       if (l[axis] == 0){
         tmp_result = T(0);
-        parent_to_child(D, key, right, node_right, right_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
-        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
+        parent_to_child(D, key, right, node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
 
         deriv = 0;
         transform_dir(right_tmp, operators((int)FunctionData<T, NDIM>::DerivOp::RMT), tmp_result, deriv, axis);
@@ -186,8 +177,8 @@ namespace mra {
       }
       else {
         tmp_result = T(0);
-        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
-        parent_to_child(D, key, left, node_left, left_tmp, tmp_result, phibar, phi, p, nn1, phi_norms, quad_x, K, workspace);
+        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, key, left, node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
 
         deriv = 0;
         transform_dir(center_tmp, operators((int)FunctionData<T, NDIM>::DerivOp::RIGHT_R0T), tmp_result, deriv, axis);
@@ -227,7 +218,6 @@ namespace mra {
       {
         // if we reached here, all checks have passed, and we do the transform to compute the derivative
         // for a given axis by calling either derivative_inner() or derivative_boundary()
-        SHARED TensorView<T, 1> p, nn1, phi_norms;
         SHARED TensorView<T, NDIM> tmp_result, left_tmp, center_tmp, right_tmp;
         SHARED T* workspace;
 
@@ -235,25 +225,22 @@ namespace mra {
         T* block_tmp_ptr = &tmp[blockId*derivative_tmp_size<NDIM>(K)];
         const size_type K2NDIM = std::pow(K, NDIM);
         if(is_team_lead()){
-          p          = TensorView<T, 1>(&block_tmp_ptr[     0], K);
-          nn1        = TensorView<T, 1>(&block_tmp_ptr[   1*K], K);
-          phi_norms  = TensorView<T, 1>(&block_tmp_ptr[   2*K], K);
-          tmp_result = TensorView<T, NDIM>(&block_tmp_ptr[3*K], K);
-          left_tmp   = TensorView<T, NDIM>(&block_tmp_ptr[3*K + 1*K2NDIM], K);
-          center_tmp = TensorView<T, NDIM>(&block_tmp_ptr[3*K + 2*K2NDIM], K);
-          right_tmp  = TensorView<T, NDIM>(&block_tmp_ptr[3*K + 3*K2NDIM], K);
-          workspace  = &block_tmp_ptr[3*K + 4*K2NDIM];
+          tmp_result = TensorView<T, NDIM>(&block_tmp_ptr[       0], K);
+          left_tmp   = TensorView<T, NDIM>(&block_tmp_ptr[1*K2NDIM], K);
+          center_tmp = TensorView<T, NDIM>(&block_tmp_ptr[2*K2NDIM], K);
+          right_tmp  = TensorView<T, NDIM>(&block_tmp_ptr[3*K2NDIM], K);
+          workspace = &block_tmp_ptr[4*K2NDIM];
         }
         SYNCTHREADS();
 
         if (is_bdy){
           derivative_boundary<T, NDIM>(D, key, left, center, right, node_left, node_center, node_right,
-            operators, deriv, tmp_result, left_tmp, center_tmp, right_tmp, phi, phibar, p, nn1, phi_norms, quad_x, g1, g2,
+            operators, deriv, tmp_result, left_tmp, center_tmp, right_tmp, phi, phibar, quad_x, g1, g2,
             bc_left, bc_right, axis, K, workspace);
         }
         else{
           derivative_inner<T, NDIM>(D, key, left, center, right, node_left, node_center, node_right,
-            operators, deriv, tmp_result, left_tmp, center_tmp, right_tmp, phi, phibar, p, nn1, phi_norms, quad_x, bc_left,
+            operators, deriv, tmp_result, left_tmp, center_tmp, right_tmp, phi, phibar, quad_x, bc_left,
             bc_right, axis, K, workspace);
         }
       }

@@ -17,14 +17,14 @@ namespace mra {
   SCOPE void compute_legendre(
     const T x,
     const size_type order,
-    TensorView<T, 1>& p,
-    const TensorView<T, 1>& nn1)
+    T* p,
+    const T* nn1)
   {
-    p(0) = 1.0;
+    p[0] = 1.0;
     if (order == 0) return;
-    p(1) = x;
+    p[1] = x;
     for (size_type n=1; n<order; ++n) {
-      p(n+1) = (x*p(n) - p(n-1)) * nn1(n) + x*p(n);
+      p[n+1] = (x*p[n] - p[n-1]) * nn1[n] + x*p[n];
     }
   }
 
@@ -32,13 +32,13 @@ namespace mra {
   SCOPE void compute_scaling(
     const T x,
     const size_type order,
-    TensorView<T, 1>& p,
-    const TensorView<T, 1>& phi_norm,
-    const TensorView<T, 1>& nn1)
+    T* p,
+    const T* phi_norm,
+    const T* nn1)
   {
     compute_legendre(T(2)*x - 1, order - 1, p, nn1);
     for (size_type n=0; n<order; ++n) {
-      p(n) *= phi_norm(n);
+      p[n] *= phi_norm[n];
     }
   }
 
@@ -49,25 +49,19 @@ namespace mra {
     const Translation lp,
     const Translation lc,
     TensorView<T, 2>& phi,
-    TensorView<T, 1>& pv,
-    TensorView<T, 1>& nn1,
-    TensorView<T, 1>& phi_norms,
+    T* pv,
+    const T* nn1,
+    const T* phi_norms,
     const TensorView<T, 1>& quad_x,
     const size_type K)
   {
-    T p[200]; // TODO: fix this to come from workspace
     T scale = pow(2.0, T(np-nc));
-
-    for (size_type i = 0; i < MAX_ORDER; ++i) {
-      nn1(i) = T(i) / T(i + 1.0);
-      phi_norms(i) = std::sqrt(T(2*i + 1));
-    }
 
     for(size_type mu = 0; mu < K; ++mu) {
       T xmu = scale * (quad_x(mu) + lc) - lp;
       assert(xmu > 1e-15 && xmu < 1.0 + 1e-15);
       compute_scaling(xmu, K, pv, phi_norms, nn1);
-      for (size_type i = 0; i < K; ++i) phi(i, mu) = pv(i);
+      for (size_type i = 0; i < K; ++i) phi(i, mu) = pv[i];
     }
     T scale_phi = pow(2.0, 0.5*np);
     phi *= scale_phi;
@@ -83,9 +77,6 @@ namespace mra {
     TensorView<T, NDIM>& result_values,
     const TensorView<T, 2>& phi_old,
     const TensorView<T, 2>& phibar,
-    TensorView<T, 1>& p,
-    TensorView<T, 1>& nn1,
-    TensorView<T, 1>& phi_norms,
     const TensorView<T, 1>& quad_x,
     const size_type K,
     T* workspace)
@@ -105,6 +96,7 @@ namespace mra {
 #else
       T* phi = new T[K*K*NDIM];
 #endif
+      SHARED T p[MAX_ORDER], nn1[MAX_ORDER], phi_norms[MAX_ORDER];
       SHARED std::array<TensorView<T, 2>, NDIM> phi_views;
       if(is_team_lead()){
         for (int d = 0; d < NDIM; ++d){
@@ -112,6 +104,10 @@ namespace mra {
         }
       }
       SYNCTHREADS();
+      for (size_type i = thread_id(); i < MAX_ORDER; i+=block_size()) {
+        nn1[i] = T(i) / T(i + 1.0);
+        phi_norms[i] = std::sqrt(T(2*i + 1));
+      }
 
       for (size_type d=0; d < NDIM; ++d){
         auto parent_l = parent.translation();
