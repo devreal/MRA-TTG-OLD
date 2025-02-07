@@ -82,7 +82,7 @@ namespace mra {
     T* workspace)
   {
     if (child.level() < parent.level()) {
-      throw std::logic_error("fcube_for_mul: bad child-parent relationship");
+      THROW("fcube_for_mul: bad child-parent relationship");
     }
     else if (child.level() == parent.level()) {
       // coeffs_to_values()

@@ -21,7 +21,7 @@ namespace mra {
   }
 
   template <typename T, Dimension NDIM>
-  void parent_to_child(
+  SCOPE void parent_to_child(
     const Domain<NDIM>& D,
     const Key<NDIM>& parent,
     const Key<NDIM>& child,
