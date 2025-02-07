@@ -217,6 +217,7 @@ namespace mra {
         , phi(K, K)
         , phiT(K, K)
         , phibar(K, K)
+        , quad_x(K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
         , operators(K, K, DerivOp::COUNT)
