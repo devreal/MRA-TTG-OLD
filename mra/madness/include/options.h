@@ -41,13 +41,10 @@ namespace mra {
       size_t pos;
       std::string token;
       int N = default_value;
-      if (option.length() == 0) return N;
-      pos = option.find(':');
-      if (pos == std::string::npos) {
-        pos = option.length();
+      char **itr = std::find(m_begin, m_end, option);
+      if (++itr < m_end) {
+        N = std::stoi(*itr);
       }
-      token = option.substr(0, pos);
-      N = std::stoi(token);
       return N;
     }
 
@@ -55,13 +52,10 @@ namespace mra {
       size_t pos;
       std::string token;
       long N = default_value;
-      if (option.length() == 0) return N;
-      pos = option.find(':');
-      if (pos == std::string::npos) {
-        pos = option.length();
+      char **itr = std::find(m_begin, m_end, option);
+      if (++itr < m_end) {
+        N = std::stol(*itr);
       }
-      token = option.substr(0, pos);
-      N = std::stol(token);
       return N;
     }
 
@@ -69,13 +63,10 @@ namespace mra {
       size_t pos;
       std::string token;
       double N = default_value;
-      if (option.length() == 0) return N;
-      pos = option.find(':');
-      if (pos == std::string::npos) {
-        pos = option.length();
+      char **itr = std::find(m_begin, m_end, option);
+      if (++itr < m_end) {
+        N = std::stod(*itr);
       }
-      token = option.substr(0, pos);
-      N = std::stod(token);
       return N;
     }
 
