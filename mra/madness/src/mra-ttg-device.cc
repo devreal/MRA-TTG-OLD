@@ -1064,7 +1064,7 @@ auto make_derivative(size_type N, size_type K,
         const Tensor<T, 1>& quad_x = functiondata.get_quad_x();
 
 #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::select(db, in.buffer(), left.coeffs().buffer(), center.coeffs().buffer(),
+        co_await ttg::device::select(db, left.coeffs().buffer(), center.coeffs().buffer(),
                                     right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
                                     phibar.buffer(), phi.buffer(), quad_x.buffer(), tmp);
 #endif // MRA_ENABLE_HOST
