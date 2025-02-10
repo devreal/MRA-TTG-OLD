@@ -906,8 +906,8 @@ auto make_derivative(size_type N, size_type K,
 
     bool has_right=false, has_left=false;
 
-    if (l[axis] != 0) has_left = true;
-    if (l[axis] != std::pow(2,n)-1) has_right = true;
+    if (n > 0 && l[axis] != 0) has_left = true;
+    if (n > 0 && l[axis] != std::pow(2,n)-1) has_right = true;
 
     if (has_right){
       auto l_right = l;
@@ -937,8 +937,7 @@ auto make_derivative(size_type N, size_type K,
 #else
       ttg::send<2>(left_key, in_node);
 #endif
-    }
-    else{
+    } else {
 #ifndef MRA_ENABLE_HOST
       // send an empty node if there is no left node
       sends.push_back(ttg::device::send<0>(key, mra::FunctionsReconstructedNode<T, NDIM>()));
@@ -963,99 +962,116 @@ auto make_derivative(size_type N, size_type K,
     auto sends = ttg::device::forward(); // collection of send operations in this task
 #endif
 
+
     if (center.empty()){
+      /**
+       * We received an empty center. If the left node is not empty, we need to refine it to the left child.
+       * If the right node is not empty, we need to refine it to the right child.
+       * These children will eventually receive a non-empty center node.
+       */
       if (!left.empty()){
-        auto l = key.translation();
-        l[axis] -= 1; // not right, need a function to do this
-        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+        mra::Key<NDIM> child_left = key.child_left(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<0>(key_left, left));
+        sends.push_back(ttg::device::send<0>(child_left, left));
 #else
-        ttg::send<0>(key_left, left);
+        ttg::send<0>(child_left, left);
 #endif
       }
 
       if (!right.empty()){
-        auto l = key.translation();
-        l[axis] += 1; // not right, need a function to do this
-        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+        mra::Key<NDIM> child_right = key.child_right(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<0>(key_right, right));
+        sends.push_back(ttg::device::send<0>(child_right, right));
 #else
-        ttg::send<0>(key_right, right);
+        ttg::send<0>(child_right, right);
 #endif
       }
-    }
-    // center is not empty
-    else {
+    } else { // center is not empty
+
       /*left is empty and we are not on the boundary, send self one
       level down & if right not empty, send the right neighbor as well*/
       if (left.empty() && key.translation()[axis] != 0){
-        auto l = key.translation();
-        l[axis] -= 1; // not right, need a function to do this
-        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+        /**
+         * Left node is empty and we are not on the left boundary.
+         * We refine the center node down one level to the lef child, as input
+         * to both the center and right.
+         */
+        mra::Key<NDIM> child_left = key.child_left(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<1>(key_left, center));
-        sends.push_back(ttg::device::send<2>(key_left, center));
+        sends.push_back(ttg::device::send<1>(child_left, center));
+        sends.push_back(ttg::device::send<2>(child_left, center));
 #else
-        ttg::send<1>(key_left, center);
-        ttg::send<2>(key_left, center);
+        ttg::send<1>(child_left, center);
+        ttg::send<2>(child_left, center);
 #endif
 
-        l = key.translation();
-        l[axis] += 1;
-        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+        /**
+         * Send the center as center and left input to the right child.
+         */
+        mra::Key<NDIM> child_right = key.child_right(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<1>(key_right, center));
-        sends.push_back(ttg::device::send<0>(key_right, center));
+        sends.push_back(ttg::device::send<1>(child_right, center));
+        sends.push_back(ttg::device::send<0>(child_right, center));
 #else
-        ttg::send<1>(key_right, center);
-        ttg::send<0>(key_right, center);
+        ttg::send<1>(child_right, center);
+        ttg::send<0>(child_right, center);
 #endif
 
+        /**
+         * The right node is not empty so send it as right input to the right child.
+         * If the right node is empty, some child will receive a non-empty right node.
+         */
         if (!right.empty()){
 #ifndef MRA_ENABLE_HOST
-          sends.push_back(ttg::device::send<2>(key_right, right));
+          sends.push_back(ttg::device::send<2>(child_right, right));
 #else
-          ttg::send<2>(key_right, right);
+          ttg::send<2>(child_right, right);
 #endif
         }
       }
 
-      if (right.empty() && key.translation()[axis] != 0){
-        auto l = key.translation();
-        l[axis] += 1;
-        mra::Key<NDIM> key_right = Key<NDIM>(key.level()+1, l);
+      if (right.empty() && !key.is_right_boundary(axis)){
+        /**
+         * The right node is empty so we need to refine the center node to where
+         * we will receive a non-empty right node.
+         * We send the center node to the center input and the left input of the
+         * right child.
+         */
+        mra::Key<NDIM> child_right = key.child_right(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<1>(key_right, center));
-        sends.push_back(ttg::device::send<0>(key_right, center));
+        sends.push_back(ttg::device::send<1>(child_right, center));
+        sends.push_back(ttg::device::send<0>(child_right, center));
 #else
-        ttg::send<1>(key_right, center);
-        ttg::send<0>(key_right, center);
+        ttg::send<1>(child_right, center);
+        ttg::send<0>(child_right, center);
 #endif
 
-        l = key.translation();
-        l[axis] -= 1;
-        mra::Key<NDIM> key_left = Key<NDIM>(key.level()+1, l);
+        mra::Key<NDIM> child_left = key.child_left(axis);
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<1>(key_left, center));
-        sends.push_back(ttg::device::send<2>(key_left, center));
+        sends.push_back(ttg::device::send<1>(child_left, center));
+        sends.push_back(ttg::device::send<2>(child_left, center));
 #else
-        ttg::send<1>(key_left, center);
-        ttg::send<2>(key_left, center);
+        ttg::send<1>(child_left, center);
+        ttg::send<2>(child_left, center);
 #endif
-
+        /**
+         * If we received a left node, we refine it to the left child as its left input.
+         * Otherwise, the left child will receive a non-empty node eventually.
+         */
         if (!left.empty()){
 #ifndef MRA_ENABLE_HOST
-          sends.push_back(ttg::device::send<2>(key_left, left));
+          sends.push_back(ttg::device::send<0>(child_left, left));
 #else
-          ttg::send<2>(key_left, left);
+          ttg::send<0>(child_left, left);
 #endif
         }
       }
 
-      if (!left.empty() && !right.empty()){
         bool is_bdy = false;
+      /**
+       * Once we have all inputs we can compute the derivative.
+       */
+      if ((!left.empty() || key.is_left_boundary(axis)) && (!right.empty() || key.is_right_boundary(axis))){
         mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
         ttg::Buffer<T> tmp = ttg::Buffer<T>(derivative_tmp_size<NDIM>(K)*N);
         const Tensor<T, 2+1>& operators = functiondata.get_operators();
@@ -1074,12 +1090,12 @@ auto make_derivative(size_type N, size_type K,
         submit_derivative_kernel(D, key, left.key(), center.key(), right.key(), left.coeffs().current_view(),
                                 center.coeffs().current_view(), right.coeffs().current_view(), operators.current_view(),
                                 result_view, phi.current_view(), phibar.current_view(), quad_x.current_view(),
-                                tmp.current_device_ptr(), N, K, g1, g2, axis, is_bdy, bc_left, bc_right, ttg::device::current_stream());
+                                tmp.current_device_ptr(), N, K, g1, g2, axis, bc_left, bc_right, ttg::device::current_stream());
 
 #ifndef MRA_ENABLE_HOST
-        sends.push_back(ttg::device::send<0>(key, std::move(result)));
+        sends.push_back(ttg::device::send<3>(key, std::move(result)));
 #else
-        ttg::send<0>(key, std::move(result));
+        ttg::send<3>(key, std::move(result));
 #endif
       }
     }
@@ -1090,7 +1106,7 @@ auto make_derivative(size_type N, size_type K,
 
   auto deriv_tt = ttg::make_tt<Space>(std::move(derivative_fn),
                              ttg::edges(left, center, right),
-                             ttg::edges(result),
+                             ttg::edges(left, center, right, result),
                              name);
 
   return std::make_tuple(std::move(deriv_tt),
@@ -1111,7 +1127,7 @@ void test(std::size_t N, std::size_t K) {
   D[0].set_cube(-6.0,6.0);
   T g1 = 0;
   T g2 = 0;
-  Dimension axis = 3;
+  Dimension axis = 1;
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
