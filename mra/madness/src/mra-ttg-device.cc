@@ -1067,7 +1067,6 @@ auto make_derivative(size_type N, size_type K,
         }
       }
 
-        bool is_bdy = false;
       /**
        * Once we have all inputs we can compute the derivative.
        */

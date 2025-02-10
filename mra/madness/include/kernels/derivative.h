@@ -212,7 +212,6 @@ namespace mra {
       const T g1,
       const T g2,
       size_type axis,
-      const bool is_bdy,
       const int bc_left,
       const int bc_right)
       {
@@ -233,7 +232,7 @@ namespace mra {
         }
         SYNCTHREADS();
 
-        if (is_bdy){
+        if (key.is_boundary(axis)){
           derivative_boundary<T, NDIM>(D, key, left, center, right, node_left, node_center, node_right,
             operators, deriv, tmp_result, left_tmp, center_tmp, right_tmp, phi, phibar, quad_x, g1, g2,
             bc_left, bc_right, axis, K, workspace);
@@ -266,7 +265,6 @@ namespace mra {
       const T g1,
       const T g2,
       size_type axis,
-      const bool is_bdy,
       const int bc_left,
       const int bc_right)
     {
@@ -280,7 +278,7 @@ namespace mra {
         }
         SYNCTHREADS();
         derivative_kernel_impl<T, NDIM>(D, key, left, center, right, node_left_view, node_center_view, node_right_view,
-          operators, deriv_view, phi, phibar, quad_x, tmp, K, g1, g2, axis, is_bdy, bc_left, bc_right);
+          operators, deriv_view, phi, phibar, quad_x, tmp, K, g1, g2, axis, bc_left, bc_right);
       }
     }
 
@@ -307,7 +305,6 @@ namespace mra {
     const T g1,
     const T g2,
     size_type axis,
-    const bool is_bdy,
     const int bc_left,
     const int bc_right,
     ttg::device::Stream stream)
@@ -317,41 +314,9 @@ namespace mra {
 
     CALL_KERNEL(detail::derivative_kernel, N, thread_dims, K*K*NDIM*sizeof(T), stream,
       (D, key, left, center, right, node_left, node_center, node_right, operators,
-        deriv, phi, phibar, quad_x, tmp, N, K, g1, g2, axis, is_bdy, bc_left, bc_right));
+        deriv, phi, phibar, quad_x, tmp, N, K, g1, g2, axis, bc_left, bc_right));
     checkSubmit();
   }
-
-    template <typename T, Dimension NDIM>
-    void init_bv(
-      size_type K,
-      const int bc_left,
-      const int bc_right,
-      TensorView<T, 1> bv_left,
-      TensorView<T, 1> bv_right)
-      {
-        T iphase = 1;
-        foreach_idx(bv_left, [&](size_type i){
-          iphase = -iphase;
-          if (bc_left == FunctionData<T, NDIM>::BC_DIRICHLET){
-            bv_left[i] = iphase*sqrt(T(2*i+1));
-          }
-          else if (bc_left == FunctionData<T, NDIM>::BC_NEUMANN){
-            bv_left[i] = -iphase*sqrt(T(2*i+1))/pow(K, T(2));;
-          }
-          else {
-            bv_left[i] = 0;
-          }
-          if (bc_right == FunctionData<T, NDIM>::BC_DIRICHLET){
-            bv_right[i] = iphase*sqrt(T(2*i+1));
-          }
-          else if (bc_right == FunctionData<T, NDIM>::BC_NEUMANN){
-            bv_right[i] = -iphase*sqrt(T(2*i+1))/pow(K, T(2));;
-          }
-          else {
-            bv_right[i] = 0;
-          }
-        });
-      }
 
 } // namespace mra
 
