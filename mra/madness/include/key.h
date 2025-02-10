@@ -157,7 +157,8 @@ namespace mra {
         }
 
         SCOPE Key<NDIM> neighbor(Dimension axis, int disp) const {
-            if (is_boundary(axis)) return invalid();
+            if ((is_right_boundary(axis) && disp > 0) ||
+                (is_left_boundary(axis) && disp < 0)) return invalid();
             std::array<Translation,NDIM> l = this->l;
             l[axis] += disp;
             return Key<NDIM>(n, l);
@@ -176,7 +177,7 @@ namespace mra {
             return is_left_boundary(axis) || is_right_boundary(axis);
         }
 
-        SCOPE Key<NDIM> invalid(){
+        SCOPE Key<NDIM> invalid() const {
             return Key<NDIM>(-1);
         }
 

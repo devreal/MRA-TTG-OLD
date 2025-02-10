@@ -122,9 +122,9 @@ namespace mra {
       size_type K,
       T* workspace)
     {
-      parent_to_child(D, left,   key, node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+      parent_to_child(D, left,   key.neighbor(axis, -1), node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
       parent_to_child(D, center, key, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
-      parent_to_child(D, right,  key, node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+      parent_to_child(D, right,  key.neighbor(axis, 1), node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
       deriv = 0;
 
       transform_dir(node_left, operators((int)FunctionData<T, NDIM>::DerivOp::RP), left_tmp, deriv, axis);
@@ -168,8 +168,8 @@ namespace mra {
       std::array<Translation, NDIM> l = key.translation();
       if (l[axis] == 0){
         tmp_result = T(0);
-        parent_to_child(D, key, right, node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
-        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, right, key.neighbor(axis, 1), node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, center, key, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
 
         deriv = 0;
         transform_dir(right_tmp, operators((int)FunctionData<T, NDIM>::DerivOp::RMT), tmp_result, deriv, axis);
@@ -177,8 +177,8 @@ namespace mra {
       }
       else {
         tmp_result = T(0);
-        parent_to_child(D, key, center, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
-        parent_to_child(D, key, left, node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, center, key, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
+        parent_to_child(D, left, key.neighbor(axis, -1), node_left, left_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
 
         deriv = 0;
         transform_dir(center_tmp, operators((int)FunctionData<T, NDIM>::DerivOp::RIGHT_R0T), tmp_result, deriv, axis);
