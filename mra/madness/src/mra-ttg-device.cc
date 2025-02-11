@@ -1295,6 +1295,7 @@ void test_derivative(std::size_t N, std::size_t K) {
   ttg::Edge<mra::Key<NDIM>, void> project_control;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> project_result, reconstruct_result, multiply_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> compress_result, compress_derivative_result, gaxpy_result;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> gaxpy_factor_result;
   ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> derivative_result;
   ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> norm_result;
 
@@ -1322,15 +1323,19 @@ void test_derivative(std::size_t N, std::size_t K) {
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   // // R(C(P))
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result, "reconstruct-rcp");
-  // C(R(C(P)))
+  // D(R(C(P)))
   auto derivative = make_derivative(N, K, reconstruct_result, derivative_result, functiondata, db, g1, g2, axis,
                                     FunctionData<T, NDIM>::BC_DIRICHLET, FunctionData<T, NDIM>::BC_DIRICHLET, "derivative");
 
-  auto compress_r = make_compress(N, K, functiondata, derivative_result, compress_derivative_result, "compress-crcp");
+  // C(D(R(C(P))))
+  auto compress_r = make_compress(N, K, functiondata, derivative_result, compress_derivative_result, "compress-deriv-crcp");
 
-  // C(R(C(P))) - C(P)
-  auto gaxpy = make_gaxpy(compress_derivative_result, gaxpy_result, factor, N, K, "gaxpy_deriv");
-  // | C(R(C(P))) - C(P) |
+  // factor * C(P)
+  auto gaxpy = make_gaxpy(compress_result, gaxpy_factor_result, factor, N, K, "gaxpy_factor");
+
+  // | C(D(R(C(P)))) - factor * C(P) |
+  auto gaxpy_r = make_gaxpy(compress_derivative_result, gaxpy_factor_result, gaxpy_result, T(1.0), T(-1.0), N, K, "gaxpy");
+
   auto norm  = make_norm(N, K, gaxpy_result, norm_result);
   // final check
   auto norm_check = ttg::make_tt([&](const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& norms){
