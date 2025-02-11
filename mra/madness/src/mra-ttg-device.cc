@@ -1330,11 +1330,8 @@ void test_derivative(std::size_t N, std::size_t K) {
   // C(D(R(C(P))))
   auto compress_r = make_compress(N, K, functiondata, derivative_result, compress_derivative_result, "compress-deriv-crcp");
 
-  // factor * C(P)
-  auto gaxpy = make_gaxpy(compress_result, gaxpy_factor_result, factor, N, K, "gaxpy_factor");
-
   // | C(D(R(C(P)))) - factor * C(P) |
-  auto gaxpy_r = make_gaxpy(compress_derivative_result, gaxpy_factor_result, gaxpy_result, T(1.0), T(-1.0), N, K, "gaxpy");
+  auto gaxpy_r = make_gaxpy(compress_derivative_result, compress_result, gaxpy_result, T(1.0), T(-1.0)*factor, N, K, "gaxpy");
 
   auto norm  = make_norm(N, K, gaxpy_result, norm_result);
   // final check
