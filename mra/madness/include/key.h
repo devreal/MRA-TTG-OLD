@@ -151,6 +151,16 @@ namespace mra {
             return Key<NDIM>(n+1, l);
         }
 
+        SCOPE bool is_left_child(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            return (this->l[axis] % 2) == 0;
+        }
+
+        SCOPE bool is_right_child(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            return (this->l[axis] % 2) == 1;
+        }
+
         SCOPE Key<NDIM> neighbor(const Key<NDIM>& disp) const {
             std::array<Translation,NDIM> l = this->l + disp.l;
             return Key<NDIM>(n, l);
@@ -177,15 +187,15 @@ namespace mra {
             return is_left_boundary(axis) || is_right_boundary(axis);
         }
 
-        SCOPE Key<NDIM> invalid() const {
+        SCOPE constexpr static Key<NDIM> invalid() {
             return Key<NDIM>(-1);
         }
 
-        SCOPE bool is_invalid() const {
+        SCOPE constexpr bool is_invalid() const {
             return n == -1;
         }
 
-        SCOPE bool is_valid() const {
+        SCOPE constexpr bool is_valid() const {
             return n != -1;
         }
     };

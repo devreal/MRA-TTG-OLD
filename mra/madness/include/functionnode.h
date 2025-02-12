@@ -47,7 +47,7 @@ namespace mra {
           }
         };
 
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
+        key_type m_key = key_type::invalid(); //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<function_metadata> m_metadata;
         tensor_type m_coeffs; //< if !is_leaf these are junk (and need not be communicated)
 
@@ -201,7 +201,7 @@ namespace mra {
         using const_view_type   = TensorView<const T, NDIM>;
 
       private:
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
+        key_type m_key = key_type::invalid(); //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<std::array<bool, Key<NDIM>::num_children()>> m_is_child_leafs; //< True if that child is leaf on tree
         Tensor<T,NDIM+1> m_coeffs; //< Always significant
 
