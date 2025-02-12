@@ -1042,6 +1042,7 @@ auto make_derivative(size_type N, size_type K,
       forward_fn.template operator()<0>();
       forward_fn.template operator()<1>();
       forward_fn.template operator()<2>();
+      do_send.template operator()<RESULT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
     } else { // center is not empty
 
       auto make_empty = []{ return mra::FunctionsReconstructedNode<T, NDIM>(); };
@@ -1137,6 +1138,7 @@ auto make_derivative(size_type N, size_type K,
         refine_down.template operator()<0>();
         refine_down.template operator()<1>();
         refine_down.template operator()<2>();
+        do_send.template operator()<RESULT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
       } else {
         /**
          * We can finally compute the derivative.
@@ -1146,6 +1148,7 @@ auto make_derivative(size_type N, size_type K,
 
         if ((!left.empty() || key.is_left_boundary(axis)) && (!right.empty() || key.is_right_boundary(axis))){
           mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
+          result.set_all_leaf(true);
           ttg::Buffer<T> tmp = ttg::Buffer<T>(derivative_tmp_size<NDIM>(K)*N);
           const Tensor<T, 2+1>& operators = functiondata.get_operators();
           const Tensor<T, 2>& phibar= functiondata.get_phibar();
