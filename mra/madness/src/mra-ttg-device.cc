@@ -924,6 +924,10 @@ auto make_derivative(size_type N, size_type K,
   constexpr static const int RIGHT = NDIM+1;
   constexpr static const int RESULT = 2*NDIM+1;
 
+  if (axis < 0 || axis >= NDIM) {
+    throw std::runtime_error("Invalid axis for derivative");
+  }
+
   auto dispatch_fn = [&, axis](const mra::Key<NDIM>& key,
                         const mra::FunctionsReconstructedNode<T, NDIM>& in_node) -> TASKTYPE {
 
@@ -1343,7 +1347,7 @@ void test_derivative(std::size_t N, std::size_t K) {
   D[0].set_cube(-6.0,6.0);
   T g1 = 0;
   T g2 = 0;
-  Dimension axis = 3;
+  Dimension axis = 1;
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
@@ -1436,7 +1440,7 @@ int main(int argc, char **argv) {
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
-  test<double, 3>(N, K);
+  test_derivative<double, 3>(N, K);
 
   ttg::finalize();
 }
