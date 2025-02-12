@@ -164,9 +164,7 @@ namespace mra {
       size_type K,
       T* workspace)
     {
-      // const TensorView<T, 2>& quad_x, // fix this
-      std::array<Translation, NDIM> l = key.translation();
-      if (l[axis] == 0){
+      if (key.is_left_boundary(axis)){
         tmp_result = T(0);
         parent_to_child(D, right, key.neighbor(axis, 1), node_right, right_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
         parent_to_child(D, center, key, node_center, center_tmp, tmp_result, phibar, phi, quad_x, K, workspace);
