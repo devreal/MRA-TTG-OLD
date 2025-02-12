@@ -42,14 +42,17 @@ static void test_mxm() {
   expectedv(2, 2) = 4;
 
   std::cout << "mxm test" << std::endl;
-  std::cout << "A:\n" << nodeA << std::endl;
-  std::cout << "B:\n" << nodeB << std::endl;
-  std::cout << "expected:\n" << expected << std::endl;
 
   auto check = [&](double init) {
     for (int i = 0; i < K; ++i) {
       for (int j = 0; j < K; ++j) {
-        assert(nodeCv(i, j) == expectedv(i, j)+init);
+        if (nodeCv(i, j) != expectedv(i, j)+init) {
+          std::cout << "Mismatch in " << i << ", " << j << ":\n" << nodeC << std::endl;
+          std::cout << "A:\n" << nodeA << std::endl;
+          std::cout << "B:\n" << nodeB << std::endl;
+          std::cout << "expected:\n" << expected << std::endl;
+          throw std::runtime_error("Validation in mTxmT failed!");
+        }
       }
     }
   };
@@ -107,15 +110,16 @@ static void test_mTxm() {
   expectedv(2, 2) = 4;
 
   std::cout << "mTxm test" << std::endl;
-  std::cout << "A:\n" << nodeA << std::endl;
-  std::cout << "B:\n" << nodeB << std::endl;
-  std::cout << "expected:\n" << expected << std::endl;
 
   auto check = [&](double init) {
     for (int i = 0; i < K; ++i) {
       for (int j = 0; j < K; ++j) {
         if (!(nodeCv(i, j) == expectedv(i, j)+init)) {
           std::cout << "Mismatch in " << i << ", " << j << ":\n" << nodeC << std::endl;
+          std::cout << "A:\n" << nodeA << std::endl;
+          std::cout << "B:\n" << nodeB << std::endl;
+          std::cout << "expected:\n" << expected << std::endl;
+          throw std::runtime_error("Validation in mTxm failed!");
         }
         assert(nodeCv(i, j) == expectedv(i, j)+init);
       }
@@ -174,17 +178,17 @@ static void test_mxmT() {
   expectedv(2, 0) = 4;
 
   std::cout << "mxmT test" << std::endl;
-  std::cout << "A:\n" << nodeA << std::endl;
-  std::cout << "B:\n" << nodeB << std::endl;
-  std::cout << "expected:\n" << expected << std::endl;
 
   auto check = [&](double init) {
     for (int i = 0; i < K; ++i) {
       for (int j = 0; j < K; ++j) {
         if (!(nodeCv(i, j) == expectedv(i, j)+init)) {
           std::cout << "Mismatch in " << i << ", " << j << ":\n" << nodeC << std::endl;
+          std::cout << "A:\n" << nodeA << std::endl;
+          std::cout << "B:\n" << nodeB << std::endl;
+          std::cout << "expected:\n" << expected << std::endl;
+          throw std::runtime_error("Validation in mxmT failed!");
         }
-        assert(nodeCv(i, j) == expectedv(i, j)+init);
       }
     }
   };
@@ -242,17 +246,17 @@ static void test_mTxmT() {
   expectedv(2, 0) = 4;
 
   std::cout << "mTxmT test" << std::endl;
-  std::cout << "A:\n" << nodeA << std::endl;
-  std::cout << "B:\n" << nodeB << std::endl;
-  std::cout << "expected:\n" << expected << std::endl;
 
   auto check = [&](double init) {
     for (int i = 0; i < K; ++i) {
       for (int j = 0; j < K; ++j) {
         if (!(nodeCv(i, j) == expectedv(i, j)+init)) {
           std::cout << "Mismatch in " << i << ", " << j << ":\n" << nodeC << std::endl;
+          std::cout << "A:\n" << nodeA << std::endl;
+          std::cout << "B:\n" << nodeB << std::endl;
+          std::cout << "expected:\n" << expected << std::endl;
+          throw std::runtime_error("Validation in mTxmT failed!");
         }
-        assert(nodeCv(i, j) == expectedv(i, j)+init);
       }
     }
   };
