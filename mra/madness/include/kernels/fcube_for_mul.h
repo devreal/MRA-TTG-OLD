@@ -109,11 +109,11 @@ namespace mra {
         phi_norms[i] = std::sqrt(T(2*i + 1));
       }
 
+      auto parent_l = parent.translation();
+      auto child_l = child.translation();
       for (size_type d=0; d < NDIM; ++d){
-        auto parent_l = parent.translation();
-        auto child_l = child.translation();
-        phi_for_mul<T>(parent.level(), child.level(), parent_l[d],
-                             child_l[d], phi_views[d], p, nn1, phi_norms, quad_x, K);
+        phi_for_mul<T>(parent.level(), child.level(), parent_l[d], child_l[d],
+                       phi_views[d], p, nn1, phi_norms, quad_x, K);
       }
 
       general_transform(coeffs, phi_views, result_values);
