@@ -26,5 +26,8 @@ int main(int argc, char **argv) {
     assert(nodeCv[i] == 0.0);
   }
 
+  ttg::execute();
+  ttg::fence();
+
   ttg::finalize();
 }

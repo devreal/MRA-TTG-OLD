@@ -43,3 +43,9 @@ add_executable(tensor-test
                madness/tests/tensor_test.cc)
 target_compile_definitions(tensor-test PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
 target_link_libraries(tensor-test PUBLIC MADworld ttg-parsec)
+
+# test to verify that tensor slices work
+add_executable(matrix-test
+               madness/tests/matrix_test.cc)
+target_compile_definitions(matrix-test PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
+target_link_libraries(matrix-test PUBLIC MADworld ttg-parsec)

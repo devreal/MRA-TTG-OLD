@@ -567,7 +567,7 @@ namespace mra {
     iterator<ndim()> begin() {return iterator<ndim()>(0, *this);}
 
     /// End for forward iteration through elements in row-major order --- this is convenient but not efficient
-    const iterator<ndim()> end() { return iterator<ndim()>(0, *this); }
+    const iterator<ndim()> end() { return iterator<ndim()>(size(), *this); }
 
     /// Start for forward iteration through elements in row-major order --- this is convenient but not efficient
     const_iterator<ndim()> begin() const { return const_iterator<ndim()>(0, *this); }

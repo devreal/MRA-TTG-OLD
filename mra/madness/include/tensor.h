@@ -23,6 +23,8 @@ namespace mra {
     using const_view_type = std::add_const_t<TensorView<value_type, NDIM>>;
     using buffer_type = ttg::Buffer<value_type, allocator_type>;
 
+    static constexpr bool is_tensor = true;
+
     static constexpr Dimension ndim() { return NDIM; }
 
     using dims_array_t = std::array<size_type, ndim()>;
@@ -95,6 +97,10 @@ namespace mra {
       return m_dims[dim];
     }
 
+    dims_array_t dims() const {
+      return m_dims;
+    }
+
     auto& buffer() {
       return m_buffer;
     }
@@ -150,7 +156,7 @@ namespace mra {
     const Dimension ndim = t.ndim();
 
     auto dims = t.dims();
-    size_type maxdim = std::max_element(dims.begin(), dims.end());
+    size_type maxdim = *std::max_element(dims.begin(), dims.end());
     size_type index_width = std::max(std::log10(maxdim), 6.0);
     std::ios::fmtflags oldflags = s.setf(std::ios::scientific);
     long oldprec = s.precision();
@@ -158,8 +164,8 @@ namespace mra {
 
     const Dimension lastdim = ndim-1;
     const size_type lastdimsize = t.dim(lastdim);
-
-    for (auto it=t.begin(); it!=t.end(); ) {
+    auto view = t.current_view();
+    for (auto it=view.begin(); it!=view.end(); ) {
       const auto& index = it.index();
       s.unsetf(std::ios::scientific);
       s << '[';
@@ -181,7 +187,7 @@ namespace mra {
         s << *it;
       }
       s.unsetf(std::ios::scientific);
-      if (it != t.end()) s << std::endl;
+      if (it != view.end()) s << std::endl;
     }
 
     s.setf(oldflags,std::ios::floatfield);

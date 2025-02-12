@@ -168,14 +168,14 @@ namespace mra{
     if (threadIdx.z == 0) {
       for (size_type i = threadIdx.y; i < dimi; i += blockDim.y) {
         cT* ci = c + i*dimj; // the row of C all threads in dim x work on
-        const aT *aik_ptr = a + i;
         if constexpr(Q) {
           for (size_type j = threadIdx.x; j < dimj; j += blockDim.x) {
             ci[j] = 0.0;
           }
         }
         for (size_type j = threadIdx.x; j < dimj; j += blockDim.x) {
-          for (long k=0; k<dimk; ++k,aik_ptr+=dimi) { /* not parallelized */
+          const aT *aik_ptr = a + i;
+          for (long k=0; k<dimk; ++k,aik_ptr+=dimj) { /* not parallelized */
             /**
              * TODO: this is not optimal, we should transpose a and b first into shared memory
              */
