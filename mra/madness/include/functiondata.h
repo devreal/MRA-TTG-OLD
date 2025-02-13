@@ -42,12 +42,8 @@ namespace mra {
         // TODO: add quad_x and corresponding functions
 
         void make_deriv_op(){
-            std::array<size_type, 3> d;
-            d[0] = K; d[1] = K; d[2] = static_cast<int>(DerivOp::COUNT); // all but boundary values
             bc_left = BCType::BC_ZERO;
             bc_right = BCType::BC_ZERO;
-
-            operators = Tensor<T, 3>(d);
             auto deriv_op_view = operators.current_view();
 
             // Operator blocks
@@ -220,7 +216,7 @@ namespace mra {
         , quad_x(K)
         , HG(2*K, 2*K)
         , HGT(2*K, 2*K)
-        , operators(K, K, DerivOp::COUNT)
+        , operators(DerivOp::COUNT, K, K)
         {
             make_phi();
             make_phiT();
