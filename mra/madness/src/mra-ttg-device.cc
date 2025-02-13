@@ -1384,9 +1384,9 @@ void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision) 
   auto gauss_deriv_buffer = ttg::Buffer<mra::GaussianDerivative<T, NDIM>>(std::move(gaussians_deriv), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
-  auto start_d = make_start(project_d_control);
+  // auto start_d = make_start(project_d_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, precision, project_control, project_result);
-  auto project_d = make_project(db, gauss_deriv_buffer, N, K, functiondata, precision, project_d_control, project_d_result);
+  auto project_d = make_project(db, gauss_deriv_buffer, N, K, functiondata, precision, project_control, project_d_result);
   // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   auto compress_d = make_compress(N, K, functiondata, project_d_result, compress_d_result, "compress-Dcp");
