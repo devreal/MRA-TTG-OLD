@@ -128,9 +128,9 @@ namespace mra {
 
         /* default copy ctor and operator */
         GaussianDerivative(const GaussianDerivative&) = default;
-        GaussianDerivative(GaussianDerivative&) = default;
-        GaussianDerivative& operator=(const GaussianDerivative) = default;
-        GaussianDerivative operator=(GaussianDerivative&&) = default;
+        GaussianDerivative(GaussianDerivative&&) = default;
+        GaussianDerivative& operator=(const GaussianDerivative&) = default;
+        GaussianDerivative& operator=(GaussianDerivative&&) = default;
 
         // T operator()(const Coordinate<T,NDIM>& r) const {
         //     T rsq = 0.0;
@@ -141,7 +141,7 @@ namespace mra {
         /**
          * Evaluate function at N points x and store result in \c values
          */
-        SCOPE void operator()(const TensorView<T,2>& x, T* values, T* values_sqrt, size_type N) const {
+        SCOPE void operator()(const TensorView<T,2>& x, T* values, size_type N) const {
             assert(x.dim(0) == NDIM);
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
