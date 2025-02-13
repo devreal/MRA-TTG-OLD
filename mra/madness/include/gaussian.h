@@ -146,7 +146,7 @@ namespace mra {
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
             for (size_type i = thread_id(); i < N; i += block_size()) {
-                values[i] = -expnt * std::sqrt(values[i]) * fac * std::exp(-expnt*values[i]);
+                values[i] = T(-2) * expnt * std::sqrt(values[i]) * fac * std::exp(-expnt*values[i]);
             }
         }
 
