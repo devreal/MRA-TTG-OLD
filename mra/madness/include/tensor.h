@@ -23,7 +23,7 @@ namespace mra {
     using const_view_type = std::add_const_t<TensorView<value_type, NDIM>>;
     using buffer_type = ttg::Buffer<value_type, allocator_type>;
 
-    static constexpr bool is_tensor = true;
+    static constexpr bool is_tensor() { return true; };
 
     static constexpr Dimension ndim() { return NDIM; }
 
@@ -144,10 +144,9 @@ namespace mra {
     }
   };
 
-  template <typename tensorT>
-  requires(tensorT::is_tensor)
+  template <typename T, Dimension NDIM>
   std::ostream&
-  operator<<(std::ostream& s, const tensorT& t) {
+  operator<<(std::ostream& s, const TensorView<T, NDIM>& t) {
     if (t.size() == 0) {
       s << "[empty tensor]\n";
       return s;
@@ -164,8 +163,7 @@ namespace mra {
 
     const Dimension lastdim = ndim-1;
     const size_type lastdimsize = t.dim(lastdim);
-    auto view = t.current_view();
-    for (auto it=view.begin(); it!=view.end(); ) {
+    for (auto it=t.begin(); it!=t.end(); ) {
       const auto& index = it.index();
       s.unsetf(std::ios::scientific);
       s << '[';
@@ -175,25 +173,33 @@ namespace mra {
         s << ",";
       }
       s << " *]";
-      // s.setf(std::ios::scientific);
-      s.setf(std::ios::fixed);
+      s.setf(std::ios::scientific);
+      //s.setf(std::ios::fixed);
       for (size_type i=0; i<lastdimsize; ++i,++it) { //<<< it incremented here!
         // s.precision(4);
         s << " ";
         //s.precision(8);
         //s.width(12);
-        s.precision(6);
-        s.width(10);
+        s.precision(16);
+        s.width(20);
         s << *it;
       }
       s.unsetf(std::ios::scientific);
-      if (it != view.end()) s << std::endl;
+      if (it != t.end()) s << std::endl;
     }
 
     s.setf(oldflags,std::ios::floatfield);
     s.precision(oldprec);
     s.width(oldwidth);
 
+    return s;
+  }
+
+  template <typename tensorT>
+  requires(tensorT::is_tensor())
+  std::ostream&
+  operator<<(std::ostream& s, const tensorT& t) {
+    s << t.current_view();
     return s;
   }
 } // namespace mra
