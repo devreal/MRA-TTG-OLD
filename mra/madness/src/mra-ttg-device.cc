@@ -1434,7 +1434,7 @@ int main(int argc, char **argv) {
 
   /* options */
   auto opt = mra::OptionParser(argc, argv);
-  size_type N = opt.parse("-N", 10);
+  size_type N = opt.parse("-N", 1);
   size_type K = opt.parse("-K", 10);
   int cores   = opt.parse("-c", -1); // -1: use all cores
   int axis    = opt.parse("-a", 1);
