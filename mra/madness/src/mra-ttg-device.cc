@@ -1344,13 +1344,12 @@ void test_pcr(std::size_t N, std::size_t K) {
 }
 
 template<typename T, mra::Dimension NDIM>
-void test_derivative(std::size_t N, std::size_t K) {
+void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
   auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
   D[0].set_cube(-6.0,6.0);
   T g1 = 0;
   T g2 = 0;
-  Dimension axis = 1;
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
@@ -1381,7 +1380,7 @@ void test_derivative(std::size_t N, std::size_t K) {
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
-  auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
+  auto project = make_project(db, gauss_buffer, N, K, functiondata, precision, project_control, project_result);
   // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   // // R(C(P))
@@ -1438,12 +1437,14 @@ int main(int argc, char **argv) {
   size_type N = opt.parse("-N", 10);
   size_type K = opt.parse("-K", 10);
   int cores   = opt.parse("-c", -1); // -1: use all cores
+  int axis    = opt.parse("-a", 1);
+  int log_precision = opt.parse("-p", 4); // default: 1e-4
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
 
   // test<double, 3>(1, 10);
-  test_derivative<double, 3>(N, K);
+  test_derivative<double, 3>(N, K, axis, std::pow(10, -log_precision));
 
   ttg::finalize();
 }
