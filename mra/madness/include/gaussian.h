@@ -145,17 +145,9 @@ namespace mra {
             assert(x.dim(0) == NDIM);
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
-            distance(origin, x, values_sqrt, N);
-#ifdef HAVE_DEVICE_ARCH
-            size_type tid = blockDim.x * ((blockDim.y*threadIdx.z) + threadIdx.y) + threadIdx.x;
-            for (size_type i = tid; i < N; i += blockDim.x*blockDim.y*blockDim.z) {
-                values[i] = -expnt * values_sqrt[i] * fac * std::exp(-expnt*values[i]);
+            for (size_type i = thread_id(); i < N; i += block_size()) {
+                values[i] = -expnt * std::sqrt(values[i]) * fac * std::exp(-expnt*values[i]);
             }
-#else  // HAVE_DEVICE_ARCH
-            for (size_type i = 0; i < N; ++i) {
-                values[i] = fac * std::exp(-expnt*values[i]);
-            }
-#endif // HAVE_DEVICE_ARCH
         }
 
         SCOPE Level initial_level() const {
