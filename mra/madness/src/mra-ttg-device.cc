@@ -125,7 +125,7 @@ auto make_project(
         auto  gldata = gl.current_device_ptr();
 
         /* submit the kernel */
-        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, tmp_ptr,
+        submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, tmp_device,
                               phibar_view, hgT_view, coeffs_view,
                               is_leafs_device, thresh, ttg::device::current_stream());
 
@@ -310,7 +310,7 @@ static auto make_compress(
         auto hgT_view = hgT.current_view();
 
         submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                              tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_views,
+                              tmp_scratch.device_ptr(), d_sumsq.current_device_ptr(), input_views,
                               ttg::device::current_stream());
 
         /* wait for kernel and transfer sums back */
