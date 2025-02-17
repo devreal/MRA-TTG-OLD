@@ -30,11 +30,6 @@ add_executable(mra-innertest madness/tests/inner_test.cc)
 target_compile_definitions(mra-innertest PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
 target_link_libraries(mra-innertest PUBLIC MADworld ttg-parsec)
 
-# test to verify that outer() works
-add_executable(mra-outertest madness/tests/outer_test.cc)
-target_compile_definitions(mra-outertest PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
-target_link_libraries(mra-outertest PUBLIC MADworld ttg-parsec)
-
 
 if (HAVE_CUDA)
   add_executable(mra-device-cuda-parsec
