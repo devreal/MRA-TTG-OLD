@@ -915,14 +915,12 @@ auto make_derivative(size_type N, size_type K,
 {
   // TODO: we could generalize this to NDIM by using the tuple-based API
   static_assert(NDIM == 3, "Derivative currently only supported in 3D!");
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> left0, left1, left2;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> center;
-  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> right0, right1, right2;
+  ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> left, center, right;
   // output terminal offsets
   constexpr static const int LEFT  = 0;
-  constexpr static const int CENTER  = NDIM;
-  constexpr static const int RIGHT = NDIM+1;
-  constexpr static const int RESULT = 2*NDIM+1;
+  constexpr static const int CENTER  = 1;
+  constexpr static const int RIGHT = 2;
+  constexpr static const int RESULT = RIGHT+1;
 
   if (axis < 0 || axis >= NDIM) {
     throw std::runtime_error("Invalid axis for derivative");
@@ -945,57 +943,44 @@ auto make_derivative(size_type N, size_type K,
     };
 #endif // MRA_ENABLE_HOST
 
-    auto handle_dir = [&]<std::size_t D>() {
 
-      bool has_right = !key.is_right_boundary(D);
-      bool has_left  = !key.is_left_boundary(D);
+    bool has_right = !key.is_right_boundary(axis);
+    bool has_left  = !key.is_left_boundary(axis);
 
-      //std::cout << "derivative dispatch " << key << " axis " << D << " has_left " << has_left << " has_right " << has_right << std::endl;
+    //std::cout << "derivative dispatch " << key << " axis " << D << " has_left " << has_left << " has_right " << has_right << std::endl;
 
-      if (has_right){
-        mra::Key<NDIM> right_key = key.neighbor(D, 1);
-        //std::cout << "derivative dispatch " << key << " has right, sending to right neighbor " << right_key << std::endl;
-        do_send.template operator()<LEFT+D>(right_key, in_node);
-      }
-      else{
-        //std::cout << "derivative dispatch " << key << " has no right, sending to right input " << key << std::endl;
-        do_send.template operator()<RIGHT+D>(key, mra::FunctionsReconstructedNode<T, NDIM>());
-      }
+    if (has_right){
+      mra::Key<NDIM> right_key = key.neighbor(axis, 1);
+      //std::cout << "derivative dispatch " << key << " has right, sending to right neighbor " << right_key << std::endl;
+      do_send.template operator()<LEFT>(right_key, in_node);
+    } else {
+      //std::cout << "derivative dispatch " << key << " has no right, sending to right input " << key << std::endl;
+      do_send.template operator()<RIGHT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
+    }
 
-      if (has_left){
-        mra::Key<NDIM> left_key = key.neighbor(D, -1);
-        //std::cout << "derivative dispatch " << key << " has left, sending to left neighbor " << left_key << std::endl;
-        do_send.template operator()<RIGHT+D>(left_key, in_node);
-      } else {
-        //std::cout << "derivative dispatch " << key << " has no left, sending to left input " << key << std::endl;
-        do_send.template operator()<LEFT+D>(key, mra::FunctionsReconstructedNode<T, NDIM>());
-      }
-    };
-    /* dispatch in all three dimensions */
-    handle_dir.template operator()<0>();
-    handle_dir.template operator()<1>();
-    handle_dir.template operator()<2>();
+    if (has_left){
+      mra::Key<NDIM> left_key = key.neighbor(axis, -1);
+      //std::cout << "derivative dispatch " << key << " has left, sending to left neighbor " << left_key << std::endl;
+      do_send.template operator()<RIGHT>(left_key, in_node);
+    } else {
+      //std::cout << "derivative dispatch " << key << " has no left, sending to left input " << key << std::endl;
+      do_send.template operator()<LEFT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
+    }
   };
 
   auto dispatch_tt = ttg::make_tt<Space>(std::move(dispatch_fn),
                                          ttg::edges(in),
-                                         ttg::edges(left0, left1, left2, center, right0, right1, right2),
+                                         ttg::edges(left, center, right),
                                          name+"-dispatch");
 
   auto derivative_fn = [&, N, K, g1, g2, axis, bc_left, bc_right](
                               const mra::Key<NDIM>& key,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& left0,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& left1,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& left2,
+                              const mra::FunctionsReconstructedNode<T, NDIM>& left,
                               const mra::FunctionsReconstructedNode<T, NDIM>& center,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& right0,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& right1,
-                              const mra::FunctionsReconstructedNode<T, NDIM>& right2) -> TASKTYPE {
+                              const mra::FunctionsReconstructedNode<T, NDIM>& right) -> TASKTYPE {
 
     /* tuple of references to inputs */
-    auto inputs = std::array{std::cref(left0), std::cref(left1), std::cref(left2),
-                             std::cref(center),
-                             std::cref(right0), std::cref(right1), std::cref(right2)};
+    auto inputs = std::array{std::cref(left), std::cref(center), std::cref(right)};
 
 #ifndef MRA_ENABLE_HOST
     // forward() returns a vector that we can push into
@@ -1013,139 +998,108 @@ auto make_derivative(size_type N, size_type K,
 
     if (center.empty()){
       //std::cout << "derivative " << key << " center empty" << std::endl;
-      auto forward_fn = [&]<std::size_t D>() {
-        /**
-         * We received an empty center. If the left node is not empty, we need to refine it to the left child.
-         * If the right node is not empty, we need to refine it to the right child.
-         * These children will eventually receive a non-empty center node.
-         */
-        auto& left = inputs[LEFT+D].get();
+      /**
+       * We received an empty center. If the left node is not empty, we need to refine it to the left child.
+       * If the right node is not empty, we need to refine it to the right child.
+       * These children will eventually receive a non-empty center node.
+       */
+      for (auto child : children(key)) {
         if (!left.empty()){
-          for (auto child : children(key)) {
-            if (child.is_left_child(D)) { // skip right children
-              //std::cout << "derivative " << key << " left not empty, sending to left child " << child << std::endl;
-              do_send.template operator()<LEFT+D>(child, left);
-            }
+          if (child.is_left_child(axis)) { // skip right children
+            //std::cout << "derivative " << key << " left not empty, sending to left child " << child << std::endl;
+            do_send.template operator()<LEFT>(child, left);
           }
         }
 
-        auto& right = inputs[RIGHT+D].get();
         if (!right.empty()){
-          for (auto child : children(key)) {
-            if (child.is_right_child(D)) { // skip left children
-              //std::cout << "derivative " << key << " right not empty, sending to right child " << child << std::endl;
-              do_send.template operator()<RIGHT+D>(child, right);
-            }
+          if (child.is_right_child(axis)) { // skip left children
+            //std::cout << "derivative " << key << " right not empty, sending to right child " << child << std::endl;
+            do_send.template operator()<RIGHT>(child, right);
           }
         }
-      };
-      forward_fn.template operator()<0>();
-      forward_fn.template operator()<1>();
-      forward_fn.template operator()<2>();
+      }
+      /* send an empty node as the result */
       do_send.template operator()<RESULT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
     } else { // center is not empty
-
-      auto make_empty = []{ return mra::FunctionsReconstructedNode<T, NDIM>(); };
-
-      auto refine_down = [&]<std::size_t D>(){
-
-        //std::cout << "derivative " << key << " center not empty, balance axis " << D << std::endl;
-
-        const auto& left  = inputs[LEFT+D].get();
-        const auto& right = inputs[RIGHT+D].get();
-
-        /**
-         * Handle left input
-         */
-
-        /* only refine down if the left node is not empty or we are at a boundary
-         * if the left node is empty the children will receive a left node from their neighbor */
-        if (!left.empty() || key.is_left_boundary(D)) {
-          for (auto child : children(key)) {
-            if (child.is_left_child(D)) { // skip right children
-              // send left (if not empty) or center to left children
-              if (key.is_left_boundary(D)) {
-                //std::cout << "derivative " << key << " center not empty, sending " << make_empty().key()
-                //          << " to left child " << child << " left input" << std::endl;
-                do_send.template operator()<LEFT+D>(child, make_empty());
-              } else {
-                //std::cout << "derivative " << key << " center not empty, sending " << left.key()
-                //          << " to left child " << child << " left input" << std::endl;
-                do_send.template operator()<LEFT+D>(child, left);
-              }
-            }
-          }
-        }
-
-        /* Send the center node to the left inputs of right children */
-        for (auto child : children(key)) {
-          if (child.is_right_child(D)) { // skip left children
-            //std::cout << "derivative " << key << " center not empty, sending " << center.key()
-            //          << " to right child " << child << " left input" << std::endl;
-            do_send.template operator()<LEFT+D>(child, center);
-          }
-        }
-
-        /**
-         * Handle right input
-         */
-
-        if (!right.empty() || key.is_right_boundary(D)) {
-          for (auto child : children(key)) {
-            if (child.is_right_child(D)) { // skip left children
-              if (key.is_right_boundary(D)) {
-                //std::cout << "derivative " << key << " center not empty, sending " << make_empty().key()
-                //          << " to right child " << child << " right input" << std::endl;
-                do_send.template operator()<RIGHT+D>(child, make_empty());
-              } else {
-                //std::cout << "derivative " << key << " center not empty, sending " << right.key()
-                //          << " to right child " << child << " right input" << std::endl;
-                do_send.template operator()<RIGHT+D>(child, right);
-              }
-            }
-          }
-        }
-
-        /* Send the center node to the right inputs of left children */
-        for (auto child : children(key)) {
-          if (child.is_left_child(D)) { // skip right children
-            //std::cout << "derivative " << key << " center not empty, sending " << center.key()
-            //          << " to left child " << child << " right input" << std::endl;
-            do_send.template operator()<RIGHT+D>(child, center);
-          }
-        }
-      };
 
       /**
        * Check if we have to refine down in all dimensions. This is necessary if one
        * of the neighbors is empty and we are not at a boundary.
        */
-      bool need_refinement = (left0.empty() && !key.is_left_boundary(0)) || (right0.empty() && !key.is_right_boundary(0)) ||
-                             (left1.empty() && !key.is_left_boundary(1)) || (right1.empty() && !key.is_right_boundary(1)) ||
-                             (left2.empty() && !key.is_left_boundary(2)) || (right2.empty() && !key.is_right_boundary(2));
+      bool need_refinement = (left.empty() && !key.is_left_boundary(axis)) || (right.empty() && !key.is_right_boundary(axis));
+
       if (need_refinement) {
+
+        auto make_empty = []{ return mra::FunctionsReconstructedNode<T, NDIM>(); };
+
         /**
          * Send center to all children.
          */
         for (auto child : children(key)) {
           //std::cout << "derivative " << key << " left or right empty, sending center " << center.key() << " to child " << child << " center input" << std::endl;
           do_send.template operator()<CENTER>(child, center);
+
+          //std::cout << "derivative " << key << " center not empty, balance axis " << D << std::endl;
+
+          /**
+           * Handle left input
+           */
+
+          /* only refine down if the left node is not empty or we are at a boundary
+           * if the left node is empty the children will receive a left node from their neighbor */
+          if (!left.empty() || key.is_left_boundary(axis)) {
+            if (child.is_left_child(axis)) { // skip right children
+              // send left (if not empty) or center to left children
+              if (key.is_left_boundary(axis)) {
+                //std::cout << "derivative " << key << " center not empty, sending " << make_empty().key()
+                //          << " to left child " << child << " left input" << std::endl;
+                do_send.template operator()<LEFT>(child, make_empty());
+              } else {
+                //std::cout << "derivative " << key << " center not empty, sending " << left.key()
+                //          << " to left child " << child << " left input" << std::endl;
+                do_send.template operator()<LEFT>(child, left);
+              }
+            }
+          }
+
+          /* Send the center node to the left inputs of right children */
+          if (child.is_right_child(axis)) { // skip left children
+            //std::cout << "derivative " << key << " center not empty, sending " << center.key()
+            //          << " to right child " << child << " left input" << std::endl;
+            do_send.template operator()<LEFT>(child, center);
+          }
+
+          /**
+           * Handle right input
+           */
+          if (!right.empty() || key.is_right_boundary(axis)) {
+            if (child.is_right_child(axis)) { // skip left children
+              if (key.is_right_boundary(axis)) {
+                //std::cout << "derivative " << key << " center not empty, sending " << make_empty().key()
+                //          << " to right child " << child << " right input" << std::endl;
+                do_send.template operator()<RIGHT>(child, make_empty());
+              } else {
+                //std::cout << "derivative " << key << " center not empty, sending " << right.key()
+                //          << " to right child " << child << " right input" << std::endl;
+                do_send.template operator()<RIGHT>(child, right);
+              }
+            }
+          }
+
+          /* Send the center node to the right inputs of left children */
+          if (child.is_left_child(axis)) { // skip right children
+            //std::cout << "derivative " << key << " center not empty, sending " << center.key()
+            //          << " to left child " << child << " right input" << std::endl;
+            do_send.template operator()<RIGHT>(child, center);
+          }
         }
 
-        /**
-         * Refine in all dimensions if one of the neighbors is empty.
-         */
-        refine_down.template operator()<0>();
-        refine_down.template operator()<1>();
-        refine_down.template operator()<2>();
+        /* send an empty node as result */
         do_send.template operator()<RESULT>(key, mra::FunctionsReconstructedNode<T, NDIM>());
       } else {
         /**
          * We can finally compute the derivative.
          */
-        auto& left  = inputs[LEFT+axis].get();
-        auto& right = inputs[RIGHT+axis].get();
-
         if ((!left.empty() || key.is_left_boundary(axis)) && (!right.empty() || key.is_right_boundary(axis))){
           mra::FunctionsReconstructedNode<T, NDIM> result(key, N, K);
           result.set_all_leaf(true);
@@ -1178,8 +1132,8 @@ auto make_derivative(size_type N, size_type K,
   };
 
   auto deriv_tt = ttg::make_tt<Space>(std::move(derivative_fn),
-                             ttg::edges(left0, left1, left2, center, right0, right1, right2),
-                             ttg::edges(left0, left1, left2, center, right0, right1, right2, result),
+                             ttg::edges(left, center, right),
+                             ttg::edges(left, center, right, result),
                              name);
 
   return std::make_tuple(std::move(deriv_tt),
