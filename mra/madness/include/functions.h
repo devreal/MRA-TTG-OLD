@@ -96,6 +96,66 @@ namespace mra {
 #endif // HAVE_DEVICE_ARCH
     }
 
+    template <typename T>
+    SCOPE void distance(const Coordinate<T,1>& p, const TensorView<T,1>& q, T* rsq, size_type N) {
+        const T x = p(0);
+#ifdef HAVE_DEVICE_ARCH
+        for (size_type i = thread_id(); i < N; i += block_size()) {
+            T xx = q(0,i) - x;
+            rsq[i] = std::sqrt(xx*xx);
+        }
+        SYNCTHREADS();
+#else  // HAVE_DEVICE_ARCH
+        for (size_type i=0; i<N; i++) {
+            T xx = q(0,i) - x;
+            rsq[i] = std::sqrt(xx*xx);
+        }
+#endif // HAVE_DEVICE_ARCH
+    }
+
+    template <typename T>
+    SCOPE void distance(const Coordinate<T,2>& p, const TensorView<T,2>& q, T* rsq, size_type N) {
+        const T x = p(0);
+        const T y = p(1);
+#ifdef HAVE_DEVICE_ARCH
+        for (size_type i = thread_id(); i < N; i += block_size()) {
+            T xx = q(0,i) - x;
+            T yy = q(1,i) - y;
+            rsq[i] = std::sqrt(xx*xx + yy*yy);
+        }
+        SYNCTHREADS();
+#else  // HAVE_DEVICE_ARCH
+        for (size_type i=0; i<N; i++) {
+            T xx = q(0,i) - x;
+            T yy = q(1,i) - y;
+            rsq[i] = std::sqrt(xx*xx + yy*yy);
+        }
+#endif // HAVE_DEVICE_ARCH
+    }
+
+    template <typename T>
+    SCOPE void distance(const Coordinate<T,3>& p, const TensorView<T,2>& q, T* rsq, size_type N) {
+        const T x = p(0);
+        const T y = p(1);
+        const T z = p(2);
+#ifdef HAVE_DEVICE_ARCH
+        for (size_type i = thread_id(); i < N; i += block_size()) {
+            T xx = q(0,i) - x;
+            T yy = q(1,i) - y;
+            T zz = q(2,i) - z;
+            rsq[i] = std::sqrt(xx*xx + yy*yy + zz*zz);
+        }
+        SYNCTHREADS();
+#else  // HAVE_DEVICE_ARCH
+        for (size_type i=0; i<N; i++) {
+            T xx = q(0,i) - x;
+            T yy = q(1,i) - y;
+            T zz = q(2,i) - z;
+            rsq[i] = std::sqrt(xx*xx + yy*yy + zz*zz);
+        }
+#endif // HAVE_DEVICE_ARCH
+    }
+
 
     namespace detail {
       /**
