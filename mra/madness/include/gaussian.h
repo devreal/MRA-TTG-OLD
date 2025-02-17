@@ -63,7 +63,7 @@ namespace mra {
             assert(x.dim(0) == NDIM);
             assert(x.dim(1) == N);
             distancesq(origin, x, values, N);
-            for (size_type i = thread_id(); i < N; i += block_dim()) {
+            for (size_type i = thread_id(); i < N; i += block_size()) {
                 values[i] = fac * std::exp(-expnt*values[i]);
             }
         }
