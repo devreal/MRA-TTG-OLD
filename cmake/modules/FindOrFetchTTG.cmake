@@ -10,7 +10,7 @@ include(FetchContent)
 FetchContent_Declare(
       ttg
       GIT_REPOSITORY      https://github.com/devreal/ttg.git
-      GIT_TAG             serialize-buffer-query-and-flexible-device-inputs-and-gpu-task-free
+      GIT_TAG             ttg-for-mra
   )
 
 #FetchContent_Declare(
