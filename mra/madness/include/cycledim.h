@@ -9,22 +9,23 @@ namespace mra{
   namespace detail{
     template<typename T, Dimension NDIM>
     SCOPE void cycledim(const TensorView<T, NDIM>& in, TensorView<T, NDIM>& out, int nshift, int start, int end){
-      std::array<int, NDIM> shifts;
+      SHARED std::array<int, NDIM> shifts;
       // support python-style negative indexing
       if (end < 0) {
-        end = NDIM - end;
+        end = NDIM + end;
       }
       if (start < 0) {
-        start = NDIM - start;
+        start = NDIM + start;
       }
       // compute new index positions
-      for (int i = 0; i < NDIM; ++i) {
+      for (int i = thread_id(); i < NDIM; i += block_size()) {
         if (i >= start && i < end) {
           shifts[i] = (i - start + nshift) % (end - start) + start;
         } else {
           shifts[i] = i;
         }
       }
+      SYNCTHREADS();
       // assign using new index positions
       foreach_idxs(in, [&](auto... idxs){
         std::array<int, NDIM> newidxs;
