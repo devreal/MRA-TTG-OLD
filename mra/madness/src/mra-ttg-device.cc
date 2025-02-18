@@ -40,7 +40,7 @@ auto make_project(
   const ttg::Buffer<FnT>& fb,
   std::size_t N,
   std::size_t K,
-  std::size_t max_level,
+  int max_level,
   const mra::FunctionData<T, NDIM>& functiondata,
   const T thresh, /// should be scalar value not complex
   ttg::Edge<mra::Key<NDIM>, void> control,
@@ -148,6 +148,7 @@ auto make_project(
 
       //std::cout << "project " << key << " all leaf " << result.is_all_leaf() << std::endl;
       // if (!result.is_all_leaf()) { // && pass in max_level
+      if (max_level > 0){
       if (!all_initial_level && result.key().level() < max_level) { // && pass in max_level
         std::vector<mra::Key<NDIM>> bcast_keys;
         for (auto child : children(key)) bcast_keys.push_back(child);
@@ -163,6 +164,18 @@ auto make_project(
       else {
         result.set_all_leaf(false);
       }
+    }
+    else {
+      if (!result.is_all_leaf()) {
+        std::vector<mra::Key<NDIM>> bcast_keys;
+        for (auto child : children(key)) bcast_keys.push_back(child);
+#ifndef MRA_ENABLE_HOST
+        outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
+#else
+        ttg::broadcastk<0>(bcast_keys);
+#endif
+      }
+    }
 
     }
 #ifndef MRA_ENABLE_HOST
@@ -1229,7 +1242,7 @@ void test(std::size_t N, std::size_t K) {
 }
 
 template<typename T, mra::Dimension NDIM>
-void test_pcr(std::size_t N, std::size_t K, size_type max_level) {
+void test_pcr(std::size_t N, std::size_t K, int max_level) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
   auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
   D[0].set_cube(-6.0,6.0);
@@ -1306,7 +1319,7 @@ void test_pcr(std::size_t N, std::size_t K, size_type max_level) {
 }
 
 template<typename T, mra::Dimension NDIM>
-void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision, std::size_t max_level) {
+void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision, int max_level) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
   auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
   D[0].set_cube(-6.0,6.0);
@@ -1408,7 +1421,7 @@ int main(int argc, char **argv) {
   int cores   = opt.parse("-c", -1); // -1: use all cores
   int axis    = opt.parse("-a", 1);
   int log_precision = opt.parse("-p", 4); // default: 1e-4
-  int max_level = opt.parse("-l", 4);
+  int max_level = opt.parse("-l", 5);
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
