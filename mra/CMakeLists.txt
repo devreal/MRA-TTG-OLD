@@ -23,6 +23,12 @@ if (HAVE_CUDA)
   target_compile_definitions(mra-device-cuda-parsec PUBLIC MRA_ENABLE_CUDA=1 TTG_USE_PARSEC=1)
   target_compile_options(mra-device-cuda-parsec PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
   target_link_libraries(mra-device-cuda-parsec PUBLIC MADworld ttg-parsec)
+
+  add_executable(gemmbench-cuda-parsec
+                  madness/src/gemmbench.cu)
+  target_compile_definitions(mra-device-cuda-parsec PUBLIC MRA_ENABLE_CUDA=1 TTG_USE_PARSEC=1)
+  target_compile_options(gemmbench-cuda-parsec PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  target_link_libraries(gemmbench-cuda-parsec PUBLIC MADworld ttg-parsec)
 endif (HAVE_CUDA)
 
 if (HAVE_HIP)
@@ -32,7 +38,17 @@ if (HAVE_HIP)
                      madness/src/twoscale.cc)
   target_compile_definitions(mra-device-hip-parsec PUBLIC MRA_ENABLE_HIP=1 TTG_USE_PARSEC=1)
   target_link_libraries(mra-device-hip-parsec PUBLIC MADworld ttg-parsec hip::host)
+
+  add_executable(gemmbench-hip-parsec
+                  madness/src/gemmbench.hip)
+  target_compile_definitions(gemmbench-hip-parsec PUBLIC MRA_ENABLE_HIP=1 TTG_USE_PARSEC=1)
+  target_link_libraries(gemmbench-hip-parsec PUBLIC MADworld ttg-parsec hip::host)
 endif (HAVE_HIP)
+
+add_executable(gemmbench-host-parsec
+                madness/src/gemmbench.cc)
+target_compile_definitions(gemmbench-host-parsec PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
+target_link_libraries(gemmbench-host-parsec PUBLIC MADworld ttg-parsec)
 
 # test to verify that tensor slices work
 add_executable(tensor-test
