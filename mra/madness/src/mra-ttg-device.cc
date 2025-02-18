@@ -40,6 +40,7 @@ auto make_project(
   const ttg::Buffer<FnT>& fb,
   std::size_t N,
   std::size_t K,
+  std::size_t max_level,
   const mra::FunctionData<T, NDIM>& functiondata,
   const T thresh, /// should be scalar value not complex
   ttg::Edge<mra::Key<NDIM>, void> control,
@@ -47,7 +48,7 @@ auto make_project(
   const char *name = "project")
 {
   /* create a non-owning buffer for domain and capture it */
-  auto fn = [&, N, K, thresh, gl = mra::GLbuffer<T>()]
+  auto fn = [&, N, K, max_level, thresh, gl = mra::GLbuffer<T>()]
             (const mra::Key<NDIM>& key) -> TASKTYPE {
     using tensor_type = typename mra::Tensor<T, NDIM+1>;
     using key_type = typename mra::Key<NDIM>;
@@ -146,7 +147,8 @@ auto make_project(
       }
 
       //std::cout << "project " << key << " all leaf " << result.is_all_leaf() << std::endl;
-      if (!result.is_all_leaf()) {
+      // if (!result.is_all_leaf()) { // && pass in max_level
+      if (!all_initial_level && result.key().level() < max_level) { // && pass in max_level
         std::vector<mra::Key<NDIM>> bcast_keys;
         for (auto child : children(key)) bcast_keys.push_back(child);
 #ifndef MRA_ENABLE_HOST
@@ -154,6 +156,12 @@ auto make_project(
 #else
         ttg::broadcastk<0>(bcast_keys);
 #endif
+      }
+      if (key.level() == max_level) {
+        result.set_all_leaf(true);
+      }
+      else {
+        result.set_all_leaf(false);
       }
 
     }
@@ -1221,7 +1229,7 @@ void test(std::size_t N, std::size_t K) {
 }
 
 template<typename T, mra::Dimension NDIM>
-void test_pcr(std::size_t N, std::size_t K) {
+void test_pcr(std::size_t N, std::size_t K, size_type max_level) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
   auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
   D[0].set_cube(-6.0,6.0);
@@ -1251,7 +1259,7 @@ void test_pcr(std::size_t N, std::size_t K) {
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
   auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
-  auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
+  auto project = make_project(db, gauss_buffer, N, K, max_level, functiondata, T(1e-6), project_control, project_result);
   // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   // // R(C(P))
@@ -1277,10 +1285,10 @@ void test_pcr(std::size_t N, std::size_t K) {
 
   std::chrono::time_point<std::chrono::high_resolution_clock> beg, end;
   if (ttg::default_execution_context().rank() == 0) {
-      //std::cout << "Is everything connected? " << connected << std::endl;
-      //std::cout << "==== begin dot ====\n";
-      //std::cout << Dot()(start.get()) << std::endl;
-      //std::cout << "====  end dot  ====\n";
+      // std::cout << "Is everything connected? " << connected << std::endl;
+      // std::cout << "==== begin dot ====\n";
+      // std::cout << ttg::Dot(true)(start.get()) << std::endl;
+      // std::cout << "====  end dot  ====\n";
 
       beg = std::chrono::high_resolution_clock::now();
       // This kicks off the entire computation
@@ -1298,7 +1306,7 @@ void test_pcr(std::size_t N, std::size_t K) {
 }
 
 template<typename T, mra::Dimension NDIM>
-void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision) {
+void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision, std::size_t max_level) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
   auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
   D[0].set_cube(-6.0,6.0);
@@ -1339,8 +1347,8 @@ void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision) 
   auto db = ttg::Buffer<mra::Domain<NDIM>>(std::move(D), 1);
   auto start = make_start(project_control);
   // auto start_d = make_start(project_d_control);
-  auto project = make_project(db, gauss_buffer, N, K, functiondata, precision, project_control, project_result);
-  auto project_d = make_project(db, gauss_deriv_buffer, N, K, functiondata, precision, project_control, project_d_result);
+  auto project = make_project(db, gauss_buffer, N, K, max_level, functiondata, precision, project_control, project_result);
+  auto project_d = make_project(db, gauss_deriv_buffer, N, K, max_level, functiondata, precision, project_control, project_d_result);
   // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   auto compress_d = make_compress(N, K, functiondata, project_d_result, compress_d_result, "compress-Dcp");
@@ -1371,10 +1379,10 @@ void test_derivative(std::size_t N, std::size_t K, Dimension axis, T precision) 
 
   std::chrono::time_point<std::chrono::high_resolution_clock> beg, end;
   if (ttg::default_execution_context().rank() == 0) {
-      //std::cout << "Is everything connected? " << connected << std::endl;
-      //std::cout << "==== begin dot ====\n";
-      //std::cout << Dot()(start.get()) << std::endl;
-      //std::cout << "====  end dot  ====\n";
+      // std::cout << "Is everything connected? " << connected << std::endl;
+      // std::cout << "==== begin dot ====\n";
+      // std::cout << Dot()(start.get()) << std::endl;
+      // std::cout << "====  end dot  ====\n";
 
       beg = std::chrono::high_resolution_clock::now();
       // This kicks off the entire computation
@@ -1400,12 +1408,13 @@ int main(int argc, char **argv) {
   int cores   = opt.parse("-c", -1); // -1: use all cores
   int axis    = opt.parse("-a", 1);
   int log_precision = opt.parse("-p", 4); // default: 1e-4
+  int max_level = opt.parse("-l", 4);
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
 
-  // test<double, 3>(1, 10);
-  test_derivative<double, 3>(N, K, axis, std::pow(10, -log_precision));
+  test_pcr<double, 3>(1, 5, max_level);
+  // test_derivative<double, 3>(N, K, axis, std::pow(10, -log_precision), max_level);
 
   ttg::finalize();
 }
