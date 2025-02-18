@@ -146,37 +146,34 @@ auto make_project(
          */
       }
 
-      //std::cout << "project " << key << " all leaf " << result.is_all_leaf() << std::endl;
-      // if (!result.is_all_leaf()) { // && pass in max_level
       if (max_level > 0){
-      if (!all_initial_level && result.key().level() < max_level) { // && pass in max_level
-        std::vector<mra::Key<NDIM>> bcast_keys;
-        for (auto child : children(key)) bcast_keys.push_back(child);
+        if (!all_initial_level && result.key().level() < max_level) { // && pass in max_level
+          std::vector<mra::Key<NDIM>> bcast_keys;
+          for (auto child : children(key)) bcast_keys.push_back(child);
 #ifndef MRA_ENABLE_HOST
-        outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
+          outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
-        ttg::broadcastk<0>(bcast_keys);
+          ttg::broadcastk<0>(bcast_keys);
 #endif
-      }
-      if (key.level() == max_level) {
-        result.set_all_leaf(true);
+        }
+        if (key.level() == max_level) {
+          result.set_all_leaf(true);
+        }
+        else {
+          result.set_all_leaf(false);
+        }
       }
       else {
-        result.set_all_leaf(false);
-      }
-    }
-    else {
-      if (!result.is_all_leaf()) {
-        std::vector<mra::Key<NDIM>> bcast_keys;
-        for (auto child : children(key)) bcast_keys.push_back(child);
+        if (!result.is_all_leaf()) {
+          std::vector<mra::Key<NDIM>> bcast_keys;
+          for (auto child : children(key)) bcast_keys.push_back(child);
 #ifndef MRA_ENABLE_HOST
-        outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
+          outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
 #else
-        ttg::broadcastk<0>(bcast_keys);
+          ttg::broadcastk<0>(bcast_keys);
 #endif
+        }
       }
-    }
-
     }
 #ifndef MRA_ENABLE_HOST
     outputs.push_back(ttg::device::send<1>(key, std::move(result))); // always produce a result
