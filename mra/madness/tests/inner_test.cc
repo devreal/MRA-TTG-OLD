@@ -3,28 +3,41 @@
 #include "kernels/inner.h"
 #include "tensor.h"
 
+#include <madness/tensor/tensor.h>
+#include <madness/world/print.h>
+
+
 int main(int argc, char **argv) {
 
   ttg::initialize(argc, argv);
 
 	constexpr const mra::size_type K = 3;
 
-  mra::Tensor<double, 2> nodeA(K), nodeB(K), nodeC(K);
-  mra::TensorView<double, 2> nodeAv = nodeA.current_view();
-  mra::TensorView<double, 2> nodeBv = nodeB.current_view();
-  mra::TensorView<double, 2> nodeCv = nodeC.current_view();
+  madness::Tensor<double> nA(K, K, K), nB(K, K, K);
 
-	for (int i=0; i<nodeA.size(); ++i){
-    for (int j=0; j<nodeA.size(); ++j){
-      nodeAv(i,j) = 1+i+j;
-      nodeBv(i,j) = 1-i-j;
-      nodeCv(i,j) = 100.0;
-    }
-	}
+  mra::Tensor<double, 3> nodeA(K), nodeB(K);
+  mra::Tensor<double, 4> nodeC(K);
+  mra::TensorView<double, 3> nodeAv = nodeA.current_view();
+  mra::TensorView<double, 3> nodeBv = nodeB.current_view();
+  mra::TensorView<double, 4> nodeCv = nodeC.current_view();
 
-  mra::detail::inner(nodeAv, nodeBv, nodeCv);
+	for (int i=0; i<K; ++i){
+    for (int j=0; j<K; ++j){
+      for (int k=0; k<K; ++k){
+        nA(i,j,k) = 1+i+j+k;
+        nB(i,j,k) = 1-i-j-k;
+        nodeAv(i,j,k) = 1+i+j+k;
+        nodeBv(i,j,k) = 1-i-j-k;
+      }
+	  }
+  }
 
-  std::cout << nodeC << std::endl;
+  mra::detail::inner(nodeAv, nodeBv, nodeCv, 2, 2);
+
+  madness::Tensor<double> nC = madness::inner(nA, nB, 2, 2);
+  std::cout << nodeCv << std::endl;
+
+  madness::print(nC);
 
 	ttg::execute();
   ttg::fence();
