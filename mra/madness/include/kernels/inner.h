@@ -5,6 +5,7 @@
 #include "types.h"
 #include "tensorview.h"
 #include "tensor.h"
+#include "mxm.h"
 #include <cassert>
 
 namespace mra{
@@ -20,12 +21,15 @@ namespace mra{
       long k1 = 0)
     {
       assert(left.dim(k0) == right.dim(k1));
+      std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
 
       if (k0 < 0) k0 += left.ndim();
       if (k1 < 0) k1 += right.ndim();
 
       if (k0==0 && k1==0) {
         // c[i,j] = a[k,i]*b[k,j] ... collapsing extra indices to i & j
+        std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
+        std::cout << "mTxm" << std::endl;
         long dimk = left.dim(k0);
         long dimj = right.stride(0);
         long dimi = left.stride(0);
@@ -34,6 +38,8 @@ namespace mra{
       }
       else if (k0==(left.ndim()-1) && k1==(right.ndim()-1)) {
         // c[i,j] = a[i,k]*b[j,k] ... collapsing extra indices to i & j
+        std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
+        std::cout << "mxmT" << std::endl;
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.size()/dimk;
@@ -42,6 +48,8 @@ namespace mra{
       }
       else if (k0==0 && k1==(right.ndim()-1)) {
         // c[i,j] = a[k,i]*b[j,k] ... collapsing extra indices to i & j
+        std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
+        std::cout << "mTxmT" << std::endl;
         long dimk = left.dim(k0);
         long dimi = left.stride(0);
         long dimj = right.size()/dimk;
@@ -50,6 +58,8 @@ namespace mra{
       }
       else if (k0==(left.ndim()-1) && k1==0) {
         // c[i,j] = a[i,k]*b[k,j] ... collapsing extra indices to i & j
+        std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
+        std::cout << "mxm" << std::endl;
         long dimk = left.dim(k0);
         long dimi = left.size()/dimk;
         long dimj = right.stride(0);
@@ -59,6 +69,7 @@ namespace mra{
 
       // TODO: use more than the first slice of threads in z here
       if (threadIdx.z == 0) {
+        std::cout << "inner: k0=" << k0 << " k1=" << k1 << std::endl;
         size_type dimj = left.dim(k0);
         auto iter1 = right.unary_iterator(IterLevel::Vector, false, k1);
         T* ptr = result.data();
