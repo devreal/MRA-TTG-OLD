@@ -39,6 +39,7 @@ namespace mra {
       }
     }
 
+    friend ::std::ostream& ::std::operator<<(std::ostream& s, const mra::TensorIterator<TensorView>& iter);
 
   public:
     constexpr static ssize_type default_jdim = std::numeric_limits<ssize_type>::max();
@@ -52,6 +53,8 @@ namespace mra {
         // Used to indicate end of iteration.
         return;
       }
+
+      m_p0 = m_t0->data();
 
       if (iterlevel == IterLevel::Element) {
         // Iteration will include all dimensions
@@ -153,5 +156,35 @@ namespace mra {
   };
 
 } // namespace mra
+
+namespace std {
+
+  template<typename View>
+  inline std::ostream& operator<<(std::ostream& s, const mra::TensorIterator<View>& iter) {
+    s << "TensorIterator(idx=[";
+    for (mra::size_type i = 0; i < iter.m_ndim; ++i) {
+      s << iter.m_idx[i];
+      if (i < iter.m_ndim-1) {
+        s << ", ";
+      }
+    }
+    std::cout << ", m_dims=[";
+    for (mra::size_type i = 0; i < iter.m_ndim; ++i) {
+      s << iter.dim(i);
+      if (i < iter.m_ndim-1) {
+        s << ", ";
+      }
+    }
+    std::cout << ", strides=[";
+    for (mra::size_type i = 0; i < iter.m_ndim; ++i) {
+      s << iter.stride(i);
+      if (i < iter.m_ndim-1) {
+        s << ", ";
+      }
+    }
+    s << "])";
+    return s;
+  }
+} // namespace std
 
 #endif // MRA_TENSORITER_H
