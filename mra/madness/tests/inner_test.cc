@@ -43,7 +43,7 @@ int main(int argc, char **argv) {
       for (int i=0; i<K; ++i) {
         for (int j=0; j<K; ++j) {
           for (int k=0; k<K; ++k) {
-            for (int l = 0; k < 3; ++k) {
+            for (int l=0; l<K; ++l) {
               if (nodeCv(i,j,k,l) != nC(i,j,k,l)) {
                 std::cout << "inner result at [" << i << "," << j << "," << k << "," << l << "] does not match for axis " << axis << std::endl;
                 std::cout << "MRA:\n" << nodeCv << std::endl;
