@@ -7,8 +7,8 @@
 #include "maxk.h"
 #include "tensorview.h"
 #include "platform.h"
-#include "kernels/child_slice.h"
-#include "kernels/transform.h"
+#include "child_slice.h"
+#include "transform.h"
 
 namespace mra {
 

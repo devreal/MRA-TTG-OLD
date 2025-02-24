@@ -5,8 +5,8 @@
 #include "types.h"
 #include "key.h"
 #include "tensorview.h"
-#include "kernels/child_slice.h"
-#include "kernels/transform.h"
+#include "child_slice.h"
+#include "transform.h"
 #include "maxk.h"
 
 #include <array>

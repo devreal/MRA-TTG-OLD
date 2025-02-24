@@ -6,8 +6,8 @@
 #include "domain.h"
 #include "gl.h"
 #include "platform.h"
-#include "kernels/fcube.h"
-#include "kernels/transform.h"
+#include "fcube.h"
+#include "transform.h"
 #include "maxk.h"
 
 namespace mra {
