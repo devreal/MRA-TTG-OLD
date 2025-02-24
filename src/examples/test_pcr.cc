@@ -93,7 +93,7 @@ int main(int argc, char **argv) {
   int cores   = opt.parse("-c", -1); // -1: use all cores
   int axis    = opt.parse("-a", 1);
   int log_precision = opt.parse("-p", 4); // default: 1e-4
-  int max_level = opt.parse("-l", 5);
+  int max_level = opt.parse("-l", -1);
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();

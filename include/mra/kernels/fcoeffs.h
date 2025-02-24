@@ -8,6 +8,7 @@
 #include "platform.h"
 #include "fcube.h"
 #include "transform.h"
+#include "functions.h"
 #include "maxk.h"
 
 namespace mra {

@@ -1,5 +1,5 @@
-#ifndef MRA_TASKS_PROJECT_H
-#define MRA_TASKS_PROJECT_H
+#ifndef MRA_TASKS_COMPRESS_H
+#define MRA_TASKS_COMPRESS_H
 
 #include <ttg.h>
 #include "tensor.h"
@@ -29,158 +29,172 @@ constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
 
 namespace mra
 {
-	template<typename FnT, typename T, mra::Dimension NDIM>
-	auto make_project(
-		const ttg::Buffer<mra::Domain<NDIM>>& db,
-		const ttg::Buffer<FnT>& fb,
-		std::size_t N,
-		std::size_t K,
-		int max_level,
+/// Make a composite operator that implements compression for a single function
+	template <typename T, mra::Dimension NDIM>
+	static auto make_compress(
+		const std::size_t N,
+		const std::size_t K,
 		const mra::FunctionData<T, NDIM>& functiondata,
-		const T thresh, /// should be scalar value not complex
-		ttg::Edge<mra::Key<NDIM>, void> control,
-		ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result,
-		const char *name = "project")
+		ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>& in,
+		ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>& out,
+		const char *name = "compress")
 	{
-		/* create a non-owning buffer for domain and capture it */
-		auto fn = [&, N, K, max_level, thresh, gl = mra::GLbuffer<T>()]
-							(const mra::Key<NDIM>& key) -> TASKTYPE {
-			using tensor_type = typename mra::Tensor<T, NDIM+1>;
-			using key_type = typename mra::Key<NDIM>;
-			using node_type = typename mra::FunctionsReconstructedNode<T, NDIM>;
-			node_type result(key, N); // empty for fast-paths, no need to zero out
-#ifndef MRA_ENABLE_HOST
-    	auto outputs = ttg::device::forward();
-#endif // MRA_ENABLE_HOST
-			auto* fn_arr = fb.host_ptr();
-			bool all_initial_level = true;
-			for (std::size_t i = 0; i < N; ++i) {
-				if (key.level() >= initial_level(fn_arr[i])) {
-					all_initial_level = false;
-					break;
-				}
-			}
-			if (all_initial_level) {
-				//std::cout << "project " << key << " all initial " << std::endl;
-				std::vector<mra::Key<NDIM>> bcast_keys;
-				/* TODO: children() returns an iteratable object but broadcast() expects a contiguous memory range.
-									We need to fix broadcast to support any ranges */
-				for (auto child : children(key)) bcast_keys.push_back(child);
+		static_assert(NDIM == 3); // TODO: worth fixing?
 
-#ifndef MRA_ENABLE_HOST
-      	outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
-#else
-      	ttg::broadcastk<0>(std::move(bcast_keys));
-#endif
-				result.set_all_leaf(false);
-			} else {
-				bool all_negligible = true;
-				for (std::size_t i = 0; i < N; ++i) {
-					all_negligible &= mra::is_negligible<FnT,T,NDIM>(
-																			fn_arr[i], db.host_ptr()->template bounding_box<T>(key),
-																			mra::truncate_tol(key,thresh));
-				}
-				//std::cout << "project " << key << " all negligible " << all_negligible << std::endl;
-				if (all_negligible) {
-					result.set_all_leaf(true);
-				} else {
-					/* here we actually compute: first select a device */
-					//result.is_leaf = fcoeffs(f, functiondata, key, thresh, coeffs);
-					/**
-					 * BEGIN FCOEFFS HERE
-					 * TODO: figure out a way to outline this into a function or coroutine
-					 */
-					// allocate tensor
-					result = node_type(key, N, K);
-					tensor_type& coeffs = result.coeffs();
+		constexpr const std::size_t num_children = mra::Key<NDIM>::num_children();
+		// creates the right number of edges for nodes to flow from send_leafs_up to compress
+		// send_leafs_up will select the right input for compress
+		auto create_edges = [&]<std::size_t... Is>(std::index_sequence<Is...>) {
+			return ttg::edges(((void)Is, ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>>{})...);
+		};
+		auto send_to_compress_edges = create_edges(std::make_index_sequence<num_children>{});
+		/* append out edge to set of edges */
+		auto compress_out_edges = std::tuple_cat(send_to_compress_edges, std::make_tuple(out));
+		/* use the tuple variant to handle variable number of inputs while suppressing the output tuple */
+		auto do_compress = [&, N, K, name](const mra::Key<NDIM>& key,
+													//const std::tuple<const FunctionsReconstructedNodeTypes&...>& input_frns
+													const mra::FunctionsReconstructedNode<T,NDIM> &in0,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in1,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in2,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in3,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in4,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in5,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in6,
+													const mra::FunctionsReconstructedNode<T,NDIM> &in7) -> TASKTYPE {
+			//const typename ::detail::tree_types<T,K,NDIM>::compress_in_type& in,
+			//typename ::detail::tree_types<T,K,NDIM>::compress_out_type& out) {
+				constexpr const auto num_children = mra::Key<NDIM>::num_children();
+				constexpr const auto out_terminal_id = num_children;
+				mra::FunctionsCompressedNode<T,NDIM> result(key, N); // The eventual result
+				// create empty, may be reset if needed
+				mra::FunctionsReconstructedNode<T, NDIM> p(key, N);
 
-					/* global function data */
-					// TODO: need to make our own FunctionData with dynamic K
-					const auto& phibar = functiondata.get_phibar();
-					const auto& hgT = functiondata.get_hgT();
+				/* check if all inputs are empty */
+				bool all_empty = in0.empty() && in1.empty() && in2.empty() && in3.empty() &&
+												in4.empty() && in5.empty() && in6.empty() && in7.empty();
 
-					/* temporaries */
-					/* TODO: have make_scratch allocate pinned memory for us */
-					auto is_leafs = std::make_unique_for_overwrite<bool[]>(N);
-					auto is_leafs_scratch = ttg::make_scratch(is_leafs.get(), ttg::scope::Allocate, N);
-					const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
-					auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-					auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
-
-					/* coeffs don't have to be synchronized into the device */
-					coeffs.buffer().reset_scope(ttg::scope::Allocate);
-
-        /* TODO: cannot do this from a function, had to move it into the main task */
-  #ifndef MRA_ENABLE_HOST
-        	co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
-                                    hgT.buffer(), tmp_scratch, is_leafs_scratch);
-  #endif
-					auto coeffs_view = coeffs.current_view();
-					auto phibar_view = phibar.current_view();
-					auto hgT_view    = hgT.current_view();
-					T* tmp_ptr = tmp_scratch.device_ptr();
-					bool *is_leafs_device = is_leafs_scratch.device_ptr();
-					auto *f_ptr   = fb.current_device_ptr();
-					auto& domain = *db.current_device_ptr();
-					auto  gldata = gl.current_device_ptr();
-
-					/* submit the kernel */
-					submit_fcoeffs_kernel(domain, gldata, f_ptr, key, N, K, tmp_ptr,
-																phibar_view, hgT_view, coeffs_view,
-																is_leafs_device, thresh, ttg::device::current_stream());
-
-					/* wait and get is_leaf back */
-  #ifndef MRA_ENABLE_HOST
-        	co_await ttg::device::wait(is_leafs_scratch);
-  #endif
+				if (all_empty) {
+					// Collect child leaf info
+					mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
+					/* all data is still on the host so the coefficients are zero */
 					for (std::size_t i = 0; i < N; ++i) {
-						result.is_leaf(i) = is_leafs[i];
+						p.sum(i) = 0.0;
 					}
-					/**
-					 * END FCOEFFS HERE
-					 */
+					p.set_all_leaf(false);
+					// std::cout << name << " " << key << " all empty, all children leafs " << result.is_all_child_leaf() << " ["
+					//           << in0.is_all_leaf() << ", " << in1.is_all_leaf() << ", "
+					//           << in2.is_all_leaf() << ", " << in3.is_all_leaf() << ", "
+					//           << in4.is_all_leaf() << ", " << in5.is_all_leaf() << ", "
+					//           << in6.is_all_leaf() << ", " << in7.is_all_leaf() << "] "
+					//           << std::endl;
+				} else {
+
+					/* some inputs are on the device so submit a kernel */
+
+					// allocate the result
+					result = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
+					auto& d = result.coeffs();
+					// Collect child leaf info
+					mra::apply_leaf_info(result, in0, in1, in2, in3, in4, in5, in6, in7);
+					p = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+					p.set_all_leaf(false);
+					assert(p.is_all_leaf() == false);
+
+					//std::cout << name << " " << key << " all leafs " << result.is_all_child_leaf() << std::endl;
+
+					/* d and p don't have to be synchronized into the device */
+					d.buffer().reset_scope(ttg::scope::Allocate);
+					p.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+
+					/* stores sumsq for each child and for result at the end of the kernel */
+					const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
+					auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+					const auto& hgT = functiondata.get_hgT();
+					auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+					auto d_sumsq = std::make_unique_for_overwrite<T[]>(N);
+					auto d_sumsq_scratch = ttg::make_scratch(d_sumsq.get(), ttg::scope::Allocate, N);
+  #ifndef MRA_ENABLE_HOST
+					auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
+																					tmp_scratch, d_sumsq_scratch);
+					auto select_in = [&](const auto& in) {
+						if (!in.empty()) {
+							input.add(in.coeffs().buffer());
+						}
+					};
+					select_in(in0); select_in(in1);
+					select_in(in2); select_in(in3);
+					select_in(in4); select_in(in5);
+					select_in(in6); select_in(in7);
+
+					co_await ttg::device::select(input);
+  #endif
+
+					/* some constness checks for the API */
+					static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
+					static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs())>>);
+					static_assert(std::is_const_v<std::remove_reference_t<decltype(in0.coeffs().buffer())>>);
+					static_assert(std::is_const_v<std::remove_reference_t<std::remove_reference_t<decltype(*in0.coeffs().buffer().current_device_ptr())>>>);
+
+					/* assemble input array and submit kernel */
+					//auto input_ptrs = std::apply([](auto... ins){ return std::array{(ins.coeffs.buffer().current_device_ptr())...}; });
+					auto input_views = std::array{in0.coeffs().current_view(), in1.coeffs().current_view(), in2.coeffs().current_view(), in3.coeffs().current_view(),
+																				in4.coeffs().current_view(), in5.coeffs().current_view(), in6.coeffs().current_view(), in7.coeffs().current_view()};
+
+					auto coeffs_view = p.coeffs().current_view();
+					auto rcoeffs_view = d.current_view();
+					auto hgT_view = hgT.current_view();
+
+					submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
+																tmp_scratch.device_ptr(), d_sumsq_scratch.device_ptr(), input_views,
+																ttg::device::current_stream());
+
+					/* wait for kernel and transfer sums back */
+  #ifndef MRA_ENABLE_HOST
+        	co_await ttg::device::wait(d_sumsq_scratch);
+  #endif
+
+					for (std::size_t i = 0; i < N; ++i) {
+						auto sumsqs = std::array{in0.sum(i), in1.sum(i), in2.sum(i), in3.sum(i),
+																		in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
+						auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
+						p.sum(i) = d_sumsq[i] + child_sumsq; // result sumsq is last element in sumsqs
+						//std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
+						//          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+					}
+
 				}
 
-				if (max_level > 0){
-					if (!all_initial_level && result.key().level() < max_level) { // && pass in max_level
-						std::vector<mra::Key<NDIM>> bcast_keys;
-						for (auto child : children(key)) bcast_keys.push_back(child);
+				// Recur up
+				if (key.level() > 0) {
+					// will not return
 #ifndef MRA_ENABLE_HOST
-          	outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
+					co_await ttg::device::forward(
+						// select to which child of our parent we send
+						//ttg::device::send<0>(key, std::move(p)),
+						select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}, "compress"),
+						// Send result to output tree
+						ttg::device::send<out_terminal_id>(key, std::move(result)));
 #else
-          	ttg::broadcastk<0>(bcast_keys);
+						select_send_up(key, std::move(p), std::make_index_sequence<num_children>{}, "compress");
+						ttg::send<out_terminal_id>(key, std::move(result));
 #endif
+				} else {
+					for (std::size_t i = 0; i < N; ++i) {
+						std::cout << "At root of compressed tree fn " << i << ": total normsq is " << p.sum(i) << std::endl;
 					}
-					if (key.level() == max_level) {
-						result.set_all_leaf(true);
-					}
-					else {
-						result.set_all_leaf(false);
-					}
+#ifndef MRA_ENABLE_HOST
+					co_await ttg::device::forward(
+						// Send result to output tree
+						ttg::device::send<out_terminal_id>(key, std::move(result)));
+#else
+        	ttg::send<out_terminal_id>(key, std::move(result));
+#endif
 				}
-				else {
-					if (!result.is_all_leaf()) {
-						std::vector<mra::Key<NDIM>> bcast_keys;
-						for (auto child : children(key)) bcast_keys.push_back(child);
-#ifndef MRA_ENABLE_HOST
-          	outputs.push_back(ttg::device::broadcastk<0>(std::move(bcast_keys)));
-#else
-          	ttg::broadcastk<0>(bcast_keys);
-#endif
-					}
-				}
-			}
-#ifndef MRA_ENABLE_HOST
-			outputs.push_back(ttg::device::send<1>(key, std::move(result))); // always produce a result
-			co_await std::move(outputs);
-#else
-    	ttg::send<1>(key, std::move(result));
-#endif
-  	};
-
-		ttg::Edge<mra::Key<NDIM>, void> refine("refine");
-		return ttg::make_tt<Space>(std::move(fn), ttg::edges(fuse(control, refine)), ttg::edges(refine,result), name);
+		};
+		return std::make_tuple(ttg::make_tt<Space>(&do_send_leafs_up<T,NDIM>, edges(in), send_to_compress_edges, "send_leaves_up"),
+													ttg::make_tt<Space>(std::move(do_compress), send_to_compress_edges, compress_out_edges, name));
 	}
+
 }
 
-#endif // MRA_TASKS_PROJECT_H
+#endif // MRA_TASKS_COMPRESS_H
