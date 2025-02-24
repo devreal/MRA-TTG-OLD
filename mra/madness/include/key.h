@@ -44,6 +44,10 @@ namespace mra {
         SCOPE Key(Level n, const std::array<Translation,NDIM>& l) : n(n), l(l)
         { }
 
+        /// Construct from level and translation=0
+        SCOPE Key(Level n) : n(n), l({0})
+        { }
+
         /// Assignment default is OK
         SCOPE Key& operator=(const Key<NDIM>& other) = default;
 
@@ -122,12 +126,77 @@ namespace mra {
         }
 
         /// Return the Key of the child at position idx \in [0, 1<<NDIM)
-        SCOPE Key<NDIM> child_at(int idx) {
+        SCOPE Key<NDIM> child_at(int idx) const {
             assert(n<MAX_LEVEL);
             assert(idx<num_children());
             std::array<Translation,NDIM> l = this->l;
             for (Dimension d = 0; d < NDIM; ++d) l[d] = 2*l[d] + ((idx & (1<<d)) ? 1 : 0);
             return Key<NDIM>(n+1, l);
+        }
+
+        SCOPE Key<NDIM> child_left(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            assert(axis < NDIM);
+            std::array<Translation,NDIM> l = this->l;
+            for (auto& x : l) x = 2*x;
+            return Key<NDIM>(n+1, l);
+        }
+
+        SCOPE Key<NDIM> child_right(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            assert(axis < NDIM);
+            std::array<Translation,NDIM> l = this->l;
+            for (auto& x : l) x = 2*x;
+            l[axis]++;
+            return Key<NDIM>(n+1, l);
+        }
+
+        SCOPE bool is_left_child(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            return (this->l[axis] % 2) == 0;
+        }
+
+        SCOPE bool is_right_child(Dimension axis) const {
+            assert(n<MAX_LEVEL);
+            return (this->l[axis] % 2) == 1;
+        }
+
+        SCOPE Key<NDIM> neighbor(const Key<NDIM>& disp) const {
+            std::array<Translation,NDIM> l = this->l + disp.l;
+            return Key<NDIM>(n, l);
+        }
+
+        SCOPE Key<NDIM> neighbor(Dimension axis, int disp) const {
+            if ((is_right_boundary(axis) && disp > 0) ||
+                (is_left_boundary(axis) && disp < 0)) return invalid();
+            std::array<Translation,NDIM> l = this->l;
+            l[axis] += disp;
+            return Key<NDIM>(n, l);
+        }
+
+
+        SCOPE bool is_left_boundary(Dimension axis) const {
+            return (l[axis] == 0);
+        }
+
+        SCOPE bool is_right_boundary(Dimension axis) const {
+            return (l[axis] == (1ul<<n)-1);
+        }
+
+        SCOPE bool is_boundary(Dimension axis) const {
+            return is_left_boundary(axis) || is_right_boundary(axis);
+        }
+
+        SCOPE constexpr static Key<NDIM> invalid() {
+            return Key<NDIM>(-1);
+        }
+
+        SCOPE constexpr bool is_invalid() const {
+            return n == -1;
+        }
+
+        SCOPE constexpr bool is_valid() const {
+            return n != -1;
         }
     };
     template <> inline SCOPE Key<1> Key<1>::parent(Level generation) const {

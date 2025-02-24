@@ -7,6 +7,7 @@
 
 #include "types.h"
 #include "platform.h"
+#include "tensoriter.h"
 
 namespace mra {
 
@@ -398,7 +399,7 @@ namespace mra {
 
     SCOPE size_type stride(size_type d) const {
       size_type s = 1;
-      for (int i = 0; i < d; ++i) {
+      for (size_type i = d+1; i < ndim(); ++i) {
         s *= m_dims[i];
       }
       return s;
@@ -494,6 +495,15 @@ namespace mra {
       return *this;
     }
 
+    /// Add another tensor
+    /// Device: assumes this operation is called by all threads in a block, synchronizes
+    /// Host: assumes this operation is called by a single CPU thread
+    SCOPE TensorView& operator+=(const TensorView<T, NDIM>& value) {
+      if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
+      foreach_idx(*this, [&](size_type i){ this->operator[](i) += value[i]; });
+      return *this;
+    }
+
     /// Copy into patch
     /// Device: assumes this operation is called by all threads in a block, synchronizes
     /// Host: assumes this operation is called by a single CPU thread
@@ -516,6 +526,8 @@ namespace mra {
       foreach_idx(*this, [&](size_type i){ this->operator[](i) = other[i]; });
       return *this;
     }
+
+    SCOPE void reduce_rank(const T& eps) {return;}
 
     SCOPE TensorSlice<TensorView> operator()(const std::array<Slice, NDIM>& slices) {
       if (m_ptr == nullptr) THROW("TensorView: non-const call with nullptr");
@@ -555,7 +567,7 @@ namespace mra {
     iterator<ndim()> begin() {return iterator<ndim()>(0, *this);}
 
     /// End for forward iteration through elements in row-major order --- this is convenient but not efficient
-    const iterator<ndim()> end() { return iterator<ndim()>(0, *this); }
+    const iterator<ndim()> end() { return iterator<ndim()>(size(), *this); }
 
     /// Start for forward iteration through elements in row-major order --- this is convenient but not efficient
     const_iterator<ndim()> begin() const { return const_iterator<ndim()>(0, *this); }
@@ -563,10 +575,25 @@ namespace mra {
     /// End for forward iteration through elements in row-major order --- this is convenient but not efficient
     const const_iterator<ndim()> end() const { return const_iterator<ndim()>(size(), *this); }
 
+    SCOPE TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
+      return {this, iterlevel, jdim};
+    }
+
+    SCOPE TensorIterator<const TensorView> unary_iterator(IterLevel iterlevel, ssize_type jdim = TensorIterator<TensorView>::default_jdim) const {
+      return {this, iterlevel, jdim};
+    }
+
+    SCOPE TensorIterator<TensorView> unary_iterator(IterLevel iterlevel, bool fusedim, ssize_type jdim = TensorIterator<TensorView>::default_jdim) {
+      return {this, iterlevel, jdim};
+    }
+
+    SCOPE TensorIterator<const TensorView> unary_iterator(IterLevel iterlevel, bool fusedim, ssize_type jdim = TensorIterator<TensorView>::default_jdim) const {
+      return {this, iterlevel, jdim};
+    }
+
   private:
     dims_array_t m_dims;
     T *m_ptr; // may be const or non-const
-
   };
 
   template<typename TensorViewT>

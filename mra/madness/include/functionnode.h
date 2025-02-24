@@ -47,7 +47,7 @@ namespace mra {
           }
         };
 
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
+        key_type m_key = key_type::invalid(); //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<function_metadata> m_metadata;
         tensor_type m_coeffs; //< if !is_leaf these are junk (and need not be communicated)
 
@@ -86,10 +86,12 @@ namespace mra {
         }
 
         bool has_children(size_type i) const {
+          if (m_metadata.empty()) return true; // empty nodes are not leafs
           return !m_metadata[i].is_leaf;
         }
 
         bool any_have_children() const {
+          if (m_metadata.empty()) return true; // empty nodes are not leafs
           bool result = false;
           for (size_type i = 0; i < m_metadata.size(); ++i) {
             result |= has_children(i);
@@ -98,12 +100,14 @@ namespace mra {
         }
 
         void set_all_leaf(bool val) {
+          if (m_metadata.empty()) throw std::runtime_error("Cannot access leaf status of empty node");
           for (auto& data : m_metadata) {
             data.is_leaf = val;
           }
         }
 
         bool is_all_leaf() const {
+          if (m_metadata.empty()) return false; // empty nodes are not leafs
           bool all_leaf = true;
           for (auto& data : m_metadata) {
             all_leaf &= data.is_leaf;
@@ -112,18 +116,22 @@ namespace mra {
         }
 
         bool& is_leaf(size_type i) {
+          if (m_metadata.empty()) throw std::runtime_error("Cannot access leaf status of empty node");
           return m_metadata[i].is_leaf;
         }
 
         bool is_leaf(size_type i) const {
+          if (m_metadata.empty()) return false; // empty nodes are not leafs
           return m_metadata[i].is_leaf;
         }
 
         bool& is_child_leaf(size_type i, size_type child) {
+          if (m_metadata.empty()) throw std::runtime_error("Cannot access leaf status of empty node");
           return m_metadata[i].is_child_leaf[child];
         }
 
         bool is_leaf(size_type i, size_type child) const {
+          if (m_metadata.empty()) return false; // empty nodes are not leafs
           return m_metadata[i].is_child_leaf[child];
         }
 
@@ -201,7 +209,7 @@ namespace mra {
         using const_view_type   = TensorView<const T, NDIM>;
 
       private:
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
+        key_type m_key = key_type::invalid(); //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<std::array<bool, Key<NDIM>::num_children()>> m_is_child_leafs; //< True if that child is leaf on tree
         Tensor<T,NDIM+1> m_coeffs; //< Always significant
 

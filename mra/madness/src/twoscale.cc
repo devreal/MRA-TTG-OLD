@@ -352,5 +352,3 @@ namespace mra {
 //     std::cout << "OK = " << mra::twoscale_check() << std::endl;
 //     return 0;
 // }
-
-

@@ -77,7 +77,7 @@ namespace mra {
             for (Dimension d = 0; d < NDIM; ++d) w = std::max(w,get_width(d));
             return w;
         }
-
+        template <typename T>
         SCOPE double get_reciprocal_width(Dimension d) const {
             assert(d<NDIM);
             assert(initialized);

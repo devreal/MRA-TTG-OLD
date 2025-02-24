@@ -23,6 +23,8 @@ namespace mra {
     using const_view_type = std::add_const_t<TensorView<value_type, NDIM>>;
     using buffer_type = ttg::Buffer<value_type, allocator_type>;
 
+    static constexpr bool is_tensor() { return true; };
+
     static constexpr Dimension ndim() { return NDIM; }
 
     using dims_array_t = std::array<size_type, ndim()>;
@@ -95,6 +97,10 @@ namespace mra {
       return m_dims[dim];
     }
 
+    dims_array_t dims() const {
+      return m_dims;
+    }
+
     auto& buffer() {
       return m_buffer;
     }
@@ -138,10 +144,9 @@ namespace mra {
     }
   };
 
-  template <typename tensorT>
-  requires(tensorT::is_tensor)
+  template <typename T, Dimension NDIM>
   std::ostream&
-  operator<<(std::ostream& s, const tensorT& t) {
+  operator<<(std::ostream& s, const TensorView<T, NDIM>& t) {
     if (t.size() == 0) {
       s << "[empty tensor]\n";
       return s;
@@ -150,7 +155,7 @@ namespace mra {
     const Dimension ndim = t.ndim();
 
     auto dims = t.dims();
-    size_type maxdim = std::max_element(dims.begin(), dims.end());
+    size_type maxdim = *std::max_element(dims.begin(), dims.end());
     size_type index_width = std::max(std::log10(maxdim), 6.0);
     std::ios::fmtflags oldflags = s.setf(std::ios::scientific);
     long oldprec = s.precision();
@@ -158,7 +163,6 @@ namespace mra {
 
     const Dimension lastdim = ndim-1;
     const size_type lastdimsize = t.dim(lastdim);
-
     for (auto it=t.begin(); it!=t.end(); ) {
       const auto& index = it.index();
       s.unsetf(std::ios::scientific);
@@ -169,15 +173,15 @@ namespace mra {
         s << ",";
       }
       s << " *]";
-      // s.setf(std::ios::scientific);
-      s.setf(std::ios::fixed);
+      s.setf(std::ios::scientific);
+      //s.setf(std::ios::fixed);
       for (size_type i=0; i<lastdimsize; ++i,++it) { //<<< it incremented here!
         // s.precision(4);
         s << " ";
         //s.precision(8);
         //s.width(12);
-        s.precision(6);
-        s.width(10);
+        s.precision(16);
+        s.width(20);
         s << *it;
       }
       s.unsetf(std::ios::scientific);
@@ -188,6 +192,14 @@ namespace mra {
     s.precision(oldprec);
     s.width(oldwidth);
 
+    return s;
+  }
+
+  template <typename tensorT>
+  requires(tensorT::is_tensor())
+  std::ostream&
+  operator<<(std::ostream& s, const tensorT& t) {
+    s << t.current_view();
     return s;
   }
 } // namespace mra
