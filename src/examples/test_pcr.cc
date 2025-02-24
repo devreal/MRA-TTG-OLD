@@ -7,6 +7,7 @@
 
 using namespace mra;
 
+
 template<typename T, mra::Dimension NDIM>
 void test_pcr(std::size_t N, std::size_t K, int max_level) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);

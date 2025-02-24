@@ -18,14 +18,20 @@
 #include <ttg/serialization/std/array.h>
 
 #ifdef MRA_ENABLE_HOST
+#ifndef TASKTYPE
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
+#endif
 #elif defined(MRA_ENABLE_CUDA)
+#ifndef TASKTYPE
 #define TASKTYPE ttg::device::Task
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
+#endif
 #elif defined(MRA_ENABLE_HIP)
+#ifndef TASKTYPE
 #define TASKTYPE ttg::device::Task
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
+#endif
 #endif
 
 namespace mra{
