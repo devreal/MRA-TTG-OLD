@@ -91,15 +91,12 @@ int main(int argc, char **argv) {
   auto opt = mra::OptionParser(argc, argv);
   size_type N = opt.parse("-N", 1);
   size_type K = opt.parse("-K", 10);
-  int cores   = opt.parse("-c", -1); // -1: use all cores
-  int axis    = opt.parse("-a", 1);
-  int log_precision = opt.parse("-p", 4); // default: 1e-4
   int max_level = opt.parse("-l", -1);
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
 
-  test_pcr<double, 3>(1, 5, max_level);
+  test_pcr<double, 3>(N, K, max_level);
 
   ttg::finalize();
 }
