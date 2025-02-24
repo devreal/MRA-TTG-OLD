@@ -65,4 +65,12 @@ if (HAVE_HIP)
                      twoscale.cc)
   target_compile_definitions(mra-device-hip-parsec PUBLIC MRA_ENABLE_HIP=1 TTG_USE_PARSEC=1)
   target_link_libraries(mra-device-hip-parsec PUBLIC MADworld ttg-parsec hip::host)
+
+  add_executable(mra-pcr-device-hip-parsec
+                     examples/test_pcr.hip
+                     gl.cc
+                     twoscale.cc)
+  target_compile_definitions(mra-pcr-device-hip-parsec PUBLIC MRA_ENABLE_CUDA=1 TTG_USE_PARSEC=1)
+  target_compile_options(mra-pcr-device-hip-parsec PUBLIC $<$<COMPILE_LANGUAGE:CUDA>:--expt-relaxed-constexpr>)
+  target_link_libraries(mra-pcr-device-hip-parsec PUBLIC MADworld ttg-parsec)
 endif (HAVE_HIP)
