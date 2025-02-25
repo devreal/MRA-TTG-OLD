@@ -34,4 +34,4 @@ set(BUILD_TESTING OFF)
 
 include(FindOrFetchTTG)
 
-add_subdirectory(mra)
+add_subdirectory(src)

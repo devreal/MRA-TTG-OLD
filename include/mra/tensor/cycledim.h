@@ -1,0 +1,47 @@
+#ifndef MRA_CYCLEDIM_H
+#define MRA_CYCLEDIM_H
+
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
+
+namespace mra{
+  namespace detail{
+    template<typename T, Dimension NDIM>
+    SCOPE void cycledim(const TensorView<T, NDIM>& in, TensorView<T, NDIM>& out, int nshift, int start, int end){
+      SHARED std::array<int, NDIM> shifts;
+      // support python-style negative indexing
+      if (end < 0) {
+        end = NDIM + end;
+      }
+      if (start < 0) {
+        start = NDIM + start;
+      }
+      // compute new index positions
+      for (int i = thread_id(); i < NDIM; i += block_size()) {
+        if (i >= start && i < end) {
+          shifts[i] = (i - start + nshift) % (end - start) + start;
+        } else {
+          shifts[i] = i;
+        }
+      }
+      SYNCTHREADS();
+      // assign using new index positions
+      foreach_idxs(in, [&](auto... idxs){
+        std::array<int, NDIM> newidxs;
+        std::array<int, NDIM> idxs_arr = {static_cast<int>(idxs)...};
+        /* mutate the indices */
+        for (int i = 0; i < NDIM; ++i) {
+          newidxs[shifts[i]] = idxs_arr[i];
+        }
+        T val = in(idxs...);
+        auto do_assign = [&]<std::size_t... Is>(std::index_sequence<Is...>){
+          out(newidxs[Is]...) = val;
+        };
+        do_assign(std::make_index_sequence<NDIM>{});
+      });
+    }
+  }
+}
+
+#endif // MRA_CYCLEDIM_H
