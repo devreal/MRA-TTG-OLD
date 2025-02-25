@@ -6,7 +6,7 @@
 #include "mra/types.h"
 #include "mra/platform.h"
 #include "mra/mxm.h"
-#include "mra/kernels/inner.h"
+#include "mra/inner.h"
 #include "mra/cycledim.h"
 namespace mra {
 

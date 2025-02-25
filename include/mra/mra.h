@@ -11,6 +11,7 @@
 #include "platform.h"
 #include "tensor.h"
 #include "tensorview.h"
+#include "child_slice.h"
 #include "functionnode.h"
 #include "functiondata.h"
 #include "functions.h"
@@ -28,5 +29,7 @@
 #include "range.h"
 #include "tensoriter.h"
 #include "twoscale.h"
+#include "inner.h"
+#include "outer.h"
 
 #endif // MRA_H_INCL

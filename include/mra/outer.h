@@ -16,9 +16,9 @@ namespace mra{
       const TensorView<T, NDIM>& right,
       TensorView<T, NDIM>& result)
     {
-      static_assert(result.ndim() <= NDIM, "too many dimensions in the result", NDIM);
+      static_assert(result.ndim() <= NDIM, "too many dimensions in the result");
       static_assert(left.ndim() + right.ndim() == result.ndim(),
-                     "inconsistent dimension in outer result", result.ndim());
+                     "inconsistent dimension in outer result");
 
       if (threadIdx.z == 0) {
         T* ptr = result.ptr();

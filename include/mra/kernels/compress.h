@@ -6,7 +6,7 @@
 #include "mra/key.h"
 #include "mra/maxk.h"
 #include "mra/tensorview.h"
-#include "mra/kernels/child_slice.h"
+#include "mra/child_slice.h"
 #include "mra/kernels.h"
 
 #include <array>
