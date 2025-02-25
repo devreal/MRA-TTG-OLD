@@ -1,13 +1,31 @@
-#ifndef MADTYPES_H_INCL
-#define MADTYPES_H_INCL
+#ifndef MRA_TYPES_H
+#define MRA_TYPES_H
 
 #include <complex>
 #include <iostream>
 #include <cstdint>
 #include <cassert>
 #include <array>
+#include <ttg.h>
 
-#include "platform.h"
+#include "mra/misc/platform.h"
+
+#ifdef MRA_ENABLE_HOST
+#ifndef TASKTYPE
+#define TASKTYPE void
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
+#endif
+#elif defined(MRA_ENABLE_CUDA)
+#ifndef TASKTYPE
+#define TASKTYPE ttg::device::Task
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
+#endif
+#elif defined(MRA_ENABLE_HIP)
+#ifndef TASKTYPE
+#define TASKTYPE ttg::device::Task
+constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
+#endif
+#endif
 
 namespace mra {
 
@@ -136,7 +154,6 @@ namespace mra {
     /// \endcode
     template <template <class...> class Trait, class... Args>
     using is_detected = typename detail::is_detected<Trait, void, Args...>::type;
-}
+} // namespace mra
 
-
-#endif
+#endif // MRA_TYPES_H

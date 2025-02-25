@@ -1,37 +1,21 @@
-#ifndef MRA_TASKS_COMMON_H_INCL
-#define MRA_TASKS_COMMON_H_INCL
+#ifndef MRA_TASKS_COMMON_H
+#define MRA_TASKS_COMMON_H
 
 #include <ttg.h>
-#include "mra/tensor.h"
-#include "mra/tensorview.h"
-#include "mra/functionnode.h"
-#include "mra/functiondata.h"
 #include "mra/kernels.h"
-#include "mra/gaussian.h"
-#include "mra/functionfunctor.h"
-#include "mra/key.h"
-#include "mra/domain.h"
-#include "mra/options.h"
+#include "mra/misc/key.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/options.h"
+#include "mra/misc/functiondata.h"
+#include "mra/tensor/tensor.h"
+#include "mra/tensor/tensorview.h"
+#include "mra/tensor/functionnode.h"
+#include "mra/functors/gaussian.h"
+#include "mra/functors/functionfunctor.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
-
-#ifdef MRA_ENABLE_HOST
-#ifndef TASKTYPE
-#define TASKTYPE void
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
-#endif
-#elif defined(MRA_ENABLE_CUDA)
-#ifndef TASKTYPE
-#define TASKTYPE ttg::device::Task
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
-#endif
-#elif defined(MRA_ENABLE_HIP)
-#ifndef TASKTYPE
-#define TASKTYPE ttg::device::Task
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
-#endif
-#endif
 
 namespace mra{
 
@@ -95,4 +79,4 @@ namespace mra{
 
 } // namespace mra
 
-#endif // MRA_TASKS_COMMON_H_INCL
+#endif // MRA_TASKS_COMMON_H

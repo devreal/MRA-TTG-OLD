@@ -7,9 +7,9 @@
 #include <cmath>
 #include <cassert>
 
-#include "types.h"
-#include "key.h"
-#include "platform.h"
+#include "mra/misc/types.h"
+#include "mra/misc/key.h"
+#include "mra/misc/platform.h"
 
 namespace mra {
 

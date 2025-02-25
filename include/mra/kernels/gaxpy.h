@@ -1,11 +1,11 @@
 #ifndef MRA_KERNELS_GAXPY_H
 #define MRA_KERNELS_GAXPY_H
 
-#include "mra/platform.h"
-#include "mra/types.h"
-#include "mra/tensorview.h"
-#include "mra/maxk.h"
-#include "mra/key.h"
+#include "mra/misc/key.h"
+#include "mra/misc/maxk.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra {
   namespace detail {

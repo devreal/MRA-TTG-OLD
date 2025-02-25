@@ -1,8 +1,8 @@
-#ifndef MRA_MXM_H_INCL
-#define MRA_MXM_H_INCL
+#ifndef MRA_MXM_H
+#define MRA_MXM_H
 
-#include "platform.h"
-#include "types.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
 
 namespace mra{
 
@@ -201,4 +201,4 @@ namespace mra{
   }
 }
 
-#endif // MRA_MXM_H_INCL
+#endif // MRA_MXM_H

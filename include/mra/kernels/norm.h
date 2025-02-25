@@ -1,10 +1,10 @@
 #ifndef MRA_KERNELS_NORM_H
 #define MRA_KERNELS_NORM_H
 
-#include "mra/platform.h"
-#include "mra/types.h"
-#include "mra/tensorview.h"
-#include "mra/key.h"
+#include "mra/misc/key.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra {
   namespace detail {

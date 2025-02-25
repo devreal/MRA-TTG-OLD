@@ -1,7 +1,7 @@
 #ifndef MRA_MAXK_H
 #define MRA_MAXK_H
 
-#include "types.h"
+#include "mra/misc/types.h"
 
 /* Set a reasonable upper bound for K.
  * This is used to inform the CUDA compiler of the maximum

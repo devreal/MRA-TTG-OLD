@@ -2,13 +2,13 @@
 #define MRA_KERNELS_DERIVATIVE_H
 
 #include <assert.h>
-#include "mra/platform.h"
-#include "mra/types.h"
-#include "mra/tensorview.h"
-#include "mra/domain.h"
-#include "mra/key.h"
-#include "mra/maxk.h"
-#include "mra/functiondata.h"
+#include "mra/misc/key.h"
+#include "mra/misc/maxk.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/platform.h"
+#include "mra/misc/functiondata.h"
+#include "mra/tensor/tensorview.h"
 #include "mra/kernels/transform.h"
 #include "mra/kernels/fcube_for_mul.h"
 

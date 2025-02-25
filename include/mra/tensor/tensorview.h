@@ -1,16 +1,15 @@
-#ifndef TTG_MRA_TENSORVIEW_H
-#define TTG_MRA_TENSORVIEW_H
+#ifndef MRA_TENSORVIEW_H
+#define MRA_TENSORVIEW_H
 
 #include <algorithm>
 #include <numeric>
 #include <array>
 
-#include "types.h"
-#include "platform.h"
-#include "tensoriter.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensoriter.h"
 
 namespace mra {
-
 
   namespace detail {
     template<Dimension NDIM, Dimension I, typename TensorViewT, typename Fn, typename... Args>
@@ -607,4 +606,4 @@ namespace mra {
 
 } // namespace mra
 
-#endif // TTG_MRA_TENSORVIEW_H
+#endif // MRA_TENSORVIEW_H

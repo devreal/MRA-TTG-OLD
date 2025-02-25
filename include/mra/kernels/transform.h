@@ -1,13 +1,13 @@
-#ifndef MRA_TRANSFORM_H
-#define MRA_TRANSFORM_H
+#ifndef MRA_KERNELS_TRANSFORM_H
+#define MRA_KERNELS_TRANSFORM_H
 
 #include <cstdlib>
-#include "mra/tensorview.h"
-#include "mra/types.h"
-#include "mra/platform.h"
-#include "mra/mxm.h"
-#include "mra/inner.h"
-#include "mra/cycledim.h"
+#include "mra/ops/mxm.h"
+#include "mra/ops/inner.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/cycledim.h"
+#include "mra/tensor/tensorview.h"
 namespace mra {
 
   template <Dimension NDIM, typename T>

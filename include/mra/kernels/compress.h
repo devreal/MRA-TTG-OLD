@@ -1,15 +1,14 @@
 #ifndef MRA_KERNELS_COMPRESS_H
 #define MRA_KERNELS_COMPRESS_H
 
-#include "mra/platform.h"
-#include "mra/types.h"
-#include "mra/key.h"
-#include "mra/maxk.h"
-#include "mra/tensorview.h"
-#include "mra/child_slice.h"
-#include "mra/kernels.h"
-
 #include <array>
+#include "mra/kernels.h"
+#include "mra/misc/key.h"
+#include "mra/misc/maxk.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
+#include "mra/tensor/child_slice.h"
 
 /**
  * Compress kernels

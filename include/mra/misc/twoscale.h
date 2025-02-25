@@ -1,7 +1,7 @@
-#ifndef MAD_TWOSCALE_H_INCL
-#define MAD_TWOSCALE_H_INCL
+#ifndef MRA_TWOSCALE_H
+#define MRA_TWOSCALE_H
 
-#include "types.h"
+#include "mra/misc/types.h"
 namespace mra {
 
     namespace detail {
@@ -19,6 +19,6 @@ namespace mra {
     void twoscale_get(size_type k, T* p) {
         detail::twoscale_get(k, p);
     }
-}
+} // namespace mra
 
-#endif
+#endif // MRA_TWOSCALE_H

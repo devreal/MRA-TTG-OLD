@@ -1,5 +1,5 @@
-#ifndef HAVE_KERNELS_H
-#define HAVE_KERNELS_H
+#ifndef MRA_KERNELS_H
+#define MRA_KERNELS_H
 
 
 /**
@@ -14,4 +14,4 @@
 #include "mra/kernels/norm.h"
 #include "mra/kernels/derivative.h"
 
-#endif // HAVE_KERNELS_H
+#endif // MRA_KERNELS_H

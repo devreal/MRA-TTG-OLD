@@ -1,12 +1,12 @@
-#ifndef MRA_INNER_H_INCL
-#define MRA_INNER_H_INCL
+#ifndef MRA_INNER_H
+#define MRA_INNER_H
 
-#include "mra/platform.h"
-#include "mra/types.h"
-#include "mra/tensorview.h"
-#include "mra/tensor.h"
-#include "mra/mxm.h"
 #include <cassert>
+#include "mra/ops/mxm.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensor.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra{
 
@@ -97,4 +97,4 @@ namespace mra{
   }
 }
 
-#endif // MRA_INNER_H_INCL
+#endif // MRA_INNER_H

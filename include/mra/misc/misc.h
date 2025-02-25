@@ -1,12 +1,12 @@
-#ifndef MADMISC_H_INCL
-#define MADMISC_H_INCL
+#ifndef MRA_MISC_H
+#define MRA_MISC_H
 
 #include <iostream>
 #include <utility>
 #include <vector>
 #include <array>
 
-#include "platform.h"
+#include "mra/misc/platform.h"
 
 namespace mra {
 
@@ -76,6 +76,6 @@ namespace mra {
         return s;
     }
 
-}
+} // namespace mra
 
-#endif
+#endif // MRA_MISC_H

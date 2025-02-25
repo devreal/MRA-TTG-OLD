@@ -1,9 +1,9 @@
-#ifndef MAD_FUNCTION_FUNCTOR_H_INCL
-#define MAD_FUNCTION_FUNCTOR_H_INCL
+#ifndef MRA_FUNCTIONFUNCTOR_H
+#define MRA_FUNCTIONFUNCTOR_H
 
-#include "tensorview.h"
-#include "types.h"
-#include "platform.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra {
 
@@ -110,5 +110,6 @@ namespace mra {
         if constexpr (detail::supports_is_negligible<functionT,pairT>()) return f.is_negligible(box, thresh);
         else return false;
     }
-}
-#endif
+} // namespace mra
+
+#endif // MRA_FUNCTIONFUNCTOR_H

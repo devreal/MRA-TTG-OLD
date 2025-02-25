@@ -1,13 +1,13 @@
-#ifndef MRA_FCOEFFS_H
-#define MRA_FCOEFFS_H
+#ifndef MRA_KERNELS_FCOEFFS_H
+#define MRA_KERNELS_FCOEFFS_H
 
-#include "mra/types.h"
-#include "mra/tensorview.h"
-#include "mra/domain.h"
-#include "mra/gl.h"
-#include "mra/platform.h"
-#include "mra/functions.h"
-#include "mra/maxk.h"
+#include "mra/misc/gl.h"
+#include "mra/misc/maxk.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/platform.h"
+#include "mra/ops/functions.h"
+#include "mra/tensor/tensorview.h"
 #include "mra/kernels/fcube.h"
 #include "mra/kernels/transform.h"
 
@@ -184,4 +184,4 @@ namespace mra {
 
 } // namespace mra
 
-#endif // MRA_FCOEFFS_H
+#endif // MRA_KERNELS_FCOEFFS_H

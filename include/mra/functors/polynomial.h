@@ -1,11 +1,11 @@
-#ifndef HAVE_POLYNOMIAL_H
-#define HAVE_POLYNOMIAL_H
+#ifndef MRA_POLYNOMIAL_H
+#define MRA_POLYNOMIAL_H
 
-#include "types.h"
-#include "domain.h"
-#include "platform.h"
-#include "functions.h"
-#include "tensor.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/platform.h"
+#include "mra/ops/functions.h"
+#include "mra/tensor/tensor.h"
 
 namespace mra {
 	template <typename T, Dimension NDIM>
@@ -66,7 +66,6 @@ namespace mra {
 				return (boxradplusr*boxradplusr < rsq);
         }
 			};
-	}
+	} // namespace mra
 
-
-#endif // HAVE_POLYNOMIAL_H
+#endif // MRA_POLYNOMIAL_H

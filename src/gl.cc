@@ -3,8 +3,8 @@
 #include <array>
 #include <cassert>
 #include <cmath>
-#include "gl.h"
-#include "range.h"
+#include "mra/misc/gl.h"
+#include "mra/misc/range.h"
 #include <ttg/device/device.h>
 
 namespace mra {

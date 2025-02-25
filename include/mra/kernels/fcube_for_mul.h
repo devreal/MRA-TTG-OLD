@@ -1,14 +1,14 @@
-#ifndef FCUBE_FOR_MUL_H_INCL
-#define FCUBE_FOR_MUL_H_INCL
+#ifndef MRA_KERNELS_FCUBE_FOR_MUL_H
+#define MRA_KERNELS_FCUBE_FOR_MUL_H
 
-#include "mra/tensorview.h"
-#include "mra/platform.h"
-#include "mra/functiondata.h"
-#include "mra/kernels.h"
-#include "mra/domain.h"
-#include "mra/key.h"
-#include "mra/types.h"
 #include <cassert>
+#include "mra/kernels.h"
+#include "mra/misc/key.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/platform.h"
+#include "mra/misc/functiondata.h"
+#include "mra/tensor/tensorview.h"
 
 #define MAX_ORDER 64
 namespace mra {
@@ -128,4 +128,4 @@ namespace mra {
 
 } // namespace mra
 
-#endif // FCUBE_FOR_MUL_H_INCL
+#endif // MRA_KERNELS_FCUBE_FOR_MUL_H

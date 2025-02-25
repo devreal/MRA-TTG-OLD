@@ -1,10 +1,10 @@
-#ifndef HAVE_MRA_DEVICE_FUNCTIONS_H
-#define HAVE_MRA_DEVICE_FUNCTIONS_H
+#ifndef MRA_FUNCTIONS_H
+#define MRA_FUNCTIONS_H
 
-#include "platform.h"
-#include "types.h"
-#include "key.h"
-#include "tensorview.h"
+#include "mra/misc/key.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
 
 #include <algorithm>
 
@@ -250,5 +250,4 @@ namespace mra {
 
 } // namespace mra
 
-
-#endif // HAVE_MRA_DEVICE_FUNCTIONS_H
+#endif // MRA_FUNCTIONS_H

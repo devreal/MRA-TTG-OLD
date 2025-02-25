@@ -1,11 +1,11 @@
-#ifndef MADGL_H_INCL
-#define MADGL_H_INCL
+#ifndef MRA_GL_H
+#define MRA_GL_H
 
 #include <cstddef>
 #include <cassert>
 
-#include "platform.h"
-#include "types.h"
+#include "mra/misc/platform.h"
+#include "mra/misc/types.h"
 
 #include "ttg/buffer.h"
 
@@ -55,4 +55,4 @@ namespace mra {
 
 } // namespace mra
 
-#endif
+#endif // MRA_GL_H

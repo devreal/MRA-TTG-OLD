@@ -1,10 +1,10 @@
-#ifndef HAVE_GAUSSIAN_H
-#define HAVE_GAUSSIAN_H
+#ifndef MRA_GAUSSIAN_H
+#define MRA_GAUSSIAN_H
 
-#include "types.h"
-#include "domain.h"
-#include "platform.h"
-#include "functions.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/platform.h"
+#include "mra/ops/functions.h"
 
 /**
  * Defines a Gaussian functor that we use across this example.
@@ -165,4 +165,5 @@ namespace mra {
     };
 
 } // namespace mra
-#endif // HAVE_GAUSSIAN_H
+
+#endif // MRA_GAUSSIAN_H

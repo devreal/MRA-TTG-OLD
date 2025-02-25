@@ -1,9 +1,9 @@
-#ifndef HAVE_MRA_FUNCTIONNODE_H
-#define HAVE_MRA_FUNCTIONNODE_H
+#ifndef MRA_FUNCTIONNODE_H
+#define MRA_FUNCTIONNODE_H
 
-#include "key.h"
-#include "tensor.h"
-#include "functions.h"
+#include "mra/misc/key.h"
+#include "mra/ops/functions.h"
+#include "mra/tensor/tensor.h"
 
 #include <ttg/serialization/std/vector.h>
 #include <ttg/serialization/std/array.h>
@@ -394,4 +394,4 @@ namespace mra {
 
 } // namespace mra
 
-#endif // HAVE_MRA_FUNCTIONNODE_H
+#endif // MRA_FUNCTIONNODE_H

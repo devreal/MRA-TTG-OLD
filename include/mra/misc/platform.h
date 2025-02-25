@@ -1,5 +1,5 @@
-#ifndef MRA_DEVICE_PLATFORM_H
-#define MRA_DEVICE_PLATFORM_H
+#ifndef MRA_PLATFORM_H
+#define MRA_PLATFORM_H
 
 #include <cstdlib>
 #include <algorithm>
@@ -163,4 +163,4 @@ namespace std {
 } // namespace std
 
 
-#endif // MRA_DEVICE_PLATFORM_H
+#endif // MRA_PLATFORM_H

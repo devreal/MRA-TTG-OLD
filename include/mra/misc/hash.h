@@ -1,8 +1,8 @@
-#ifndef MADHASH_H_INCL
-#define MADHASH_H_INCL
+#ifndef MRA_HASH_H
+#define MRA_HASH_H
 
-#include "types.h"
-#include "platform.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
 
 namespace mra {
 
@@ -56,6 +56,6 @@ namespace mra {
         return detail::rot(hash)^(data*m);
     }
 
-}
+} // namespace mra
 
-#endif
+#endif // MRA_HASH_H

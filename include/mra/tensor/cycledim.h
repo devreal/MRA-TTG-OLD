@@ -1,9 +1,9 @@
-#ifndef CYCLEDIM_H_INCL
-#define CYCLEDIM_H_INCL
+#ifndef MRA_CYCLEDIM_H
+#define MRA_CYCLEDIM_H
 
-#include "platform.h"
-#include "types.h"
-#include "tensorview.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra{
   namespace detail{
@@ -44,4 +44,4 @@ namespace mra{
   }
 }
 
-#endif // CYCLEDIM_H_INCL
+#endif // MRA_CYCLEDIM_H

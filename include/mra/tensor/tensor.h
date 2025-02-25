@@ -1,5 +1,5 @@
-#ifndef TTG_MRA_TENSOR_H
-#define TTG_MRA_TENSOR_H
+#ifndef MRA_TENSOR_H
+#define MRA_TENSOR_H
 
 #include <algorithm>
 #include <numeric>
@@ -10,7 +10,7 @@
 #include <ttg/serialization/std/array.h>
 #include <madness/world/world.h>
 
-#include "tensorview.h"
+#include "mra/tensor/tensorview.h"
 
 namespace mra {
 
@@ -204,4 +204,4 @@ namespace mra {
   }
 } // namespace mra
 
-#endif // TTG_MRA_TENSOR_H
+#endif // MRA_TENSOR_H

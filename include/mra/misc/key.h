@@ -1,10 +1,10 @@
-#ifndef KEY_H_INCLUDED
-#define KEY_H_INCLUDED
+#ifndef MRA_KEY_H
+#define MRA_KEY_H
 
-#include "types.h"
-#include "hash.h"
-#include "misc.h"
-#include "platform.h"
+#include "mra/misc/types.h"
+#include "mra/misc/hash.h"
+#include "mra/misc/misc.h"
+#include "mra/misc/platform.h"
 
 namespace mra {
 
@@ -320,7 +320,6 @@ namespace std {
     struct hash<mra::Key<NDIM>> {
         SCOPE int operator()(const mra::Key<NDIM>& s) const noexcept { return s.hash(); }
     };
-}
+} // namespace std
 
-
-#endif
+#endif // MRA_KEY_H

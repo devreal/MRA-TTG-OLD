@@ -1,11 +1,11 @@
-#ifndef MADFUNCTIONDATA_H_INCL
-#define MADFUNCTIONDATA_H_INCL
+#ifndef MRA_FUNCTIONDATA_H
+#define MRA_FUNCTIONDATA_H
 
-#include "types.h"
-#include "domain.h"
-#include "twoscale.h"
-#include "tensor.h"
-#include "gl.h"
+#include "mra/misc/gl.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/twoscale.h"
+#include "mra/tensor/tensor.h"
 
 namespace mra {
 
@@ -260,6 +260,6 @@ namespace mra {
         const auto& get_hgT() const {return HGT;}
         const auto& get_operators() const {return operators;}
 };
-}
+} // namespace mra
 
-#endif
+#endif // MRA_FUNCTIONDATA_H

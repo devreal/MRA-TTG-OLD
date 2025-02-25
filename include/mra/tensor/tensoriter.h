@@ -1,8 +1,8 @@
 #ifndef MRA_TENSORITER_H
 #define MRA_TENSORITER_H
 
-#include "platform.h"
-#include "types.h"
+#include "mra/misc/types.h"
+#include "mra/misc/platform.h"
 
 namespace mra {
 

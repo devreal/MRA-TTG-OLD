@@ -1,5 +1,5 @@
-#ifndef MADRANGE_H_INCL
-#define MADRANGE_H_INCL
+#ifndef MRA_RANGE_H
+#define MRA_RANGE_H
 
 namespace mra {
 
@@ -20,7 +20,7 @@ namespace mra {
         iterator end() const { return iterator(finish); }
         size_t initial_size() const {return finish;}
     };
-    
+
     /// A simple signed integer range to support iteration a la Python range(start,finish,step)
     class Range {
         long start, count, finish, step;
@@ -44,14 +44,14 @@ namespace mra {
         iterator end() const { return iterator(finish,step); }
         long initial_size() const {return count;}
     };
-    
+
     /// range(n) will iterate over 0,...,n-1 (i.e., excludes n) a la Python
     inline static RangeSimple range(size_t finish) {return RangeSimple(finish);}
-    
+
     /// range(start,finish,step) will iterate over start, start+step, ... excluding finish a la Python
-    
+
     /// supports negative step and if step!=1 also supports finish not being part of the sequence.
     inline static Range range(long start, long finish, long step=1) {return Range(start,finish,step);}
-}
+} // namespace mra
 
-#endif
+#endif // MRA_RANGE_H

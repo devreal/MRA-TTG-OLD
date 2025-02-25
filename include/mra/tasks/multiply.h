@@ -2,36 +2,20 @@
 #define MRA_TASKS_MULTIPLY_H
 
 #include <ttg.h>
-#include "tensor.h"
-#include "tensorview.h"
-#include "functionnode.h"
-#include "functiondata.h"
-#include "kernels.h"
-#include "gaussian.h"
-#include "functionfunctor.h"
-#include "key.h"
-#include "domain.h"
-#include "options.h"
+#include "mra/kernels.h"
+#include "mra/misc/key.h"
+#include "mra/misc/types.h"
+#include "mra/misc/domain.h"
+#include "mra/misc/options.h"
+#include "mra/misc/functiondata.h"
+#include "mra/tensor/tensor.h"
+#include "mra/tensor/tensorview.h"
+#include "mra/tensor/functionnode.h"
+#include "mra/functors/gaussian.h"
+#include "mra/functors/functionfunctor.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
-
-#ifdef MRA_ENABLE_HOST
-#ifndef TASKTYPE
-#define TASKTYPE void
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
-#endif
-#elif defined(MRA_ENABLE_CUDA)
-#ifndef TASKTYPE
-#define TASKTYPE ttg::device::Task
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
-#endif
-#elif defined(MRA_ENABLE_HIP)
-#ifndef TASKTYPE
-#define TASKTYPE ttg::device::Task
-constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
-#endif
-#endif
 
 namespace mra{
 	template<typename T, mra::Dimension NDIM>

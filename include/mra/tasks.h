@@ -1,5 +1,5 @@
-#ifndef HAVE_TASKS_H
-#define HAVE_TASKS_H
+#ifndef HAVE_MRA_TASKS_H
+#define HAVE_MRA_TASKS_H
 
 /**
  * Collect all available tasks here
