@@ -2,16 +2,16 @@
 #define MRA_TASKS_COMMON_H_INCL
 
 #include <ttg.h>
-#include "tensor.h"
-#include "tensorview.h"
-#include "functionnode.h"
-#include "functiondata.h"
-#include "kernels.h"
-#include "gaussian.h"
-#include "functionfunctor.h"
-#include "key.h"
-#include "domain.h"
-#include "options.h"
+#include "mra/tensor.h"
+#include "mra/tensorview.h"
+#include "mra/functionnode.h"
+#include "mra/functiondata.h"
+#include "mra/kernels.h"
+#include "mra/gaussian.h"
+#include "mra/functionfunctor.h"
+#include "mra/key.h"
+#include "mra/domain.h"
+#include "mra/options.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
@@ -37,8 +37,8 @@ namespace mra{
 
 	template <mra::Dimension NDIM>
 	auto make_start(const ttg::Edge<mra::Key<NDIM>, void>& ctl) {
-			auto func = [](const mra::Key<NDIM>& key) { ttg::sendk<0>(key); };
-			return ttg::make_tt<mra::Key<NDIM>>(func, ttg::edges(), edges(ctl), "start", {}, {"control"});
+		auto func = [](const mra::Key<NDIM>& key) { ttg::sendk<0>(key); };
+		return ttg::make_tt<mra::Key<NDIM>>(func, ttg::edges(), edges(ctl), "start", {}, {"control"});
 	}
 
 	static std::mutex printer_guard;
@@ -69,9 +69,9 @@ namespace mra{
 		/* drop all inputs from nodes that are not leafs, they will be upstreamed by compress */
 		if (!node.any_have_children()) {
 #ifndef MRA_ENABLE_HOST
-    	co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
+		co_await select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
 #else
-    	select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
+		select_send_up(key, node, std::make_index_sequence<mra::Key<NDIM>::num_children()>{}, "do_send_leafs_up");
 #endif
   	}
 	}

@@ -2,13 +2,13 @@
 #define MRA_KERNELS_RECONSTRUCT_H
 
 
-#include "types.h"
-#include "key.h"
-#include "maxk.h"
-#include "tensorview.h"
-#include "platform.h"
-#include "child_slice.h"
-#include "transform.h"
+#include "mra/types.h"
+#include "mra/key.h"
+#include "mra/maxk.h"
+#include "mra/tensorview.h"
+#include "mra/platform.h"
+#include "mra/kernels/child_slice.h"
+#include "mra/kernels/transform.h"
 
 namespace mra {
 

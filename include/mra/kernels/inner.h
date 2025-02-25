@@ -1,11 +1,11 @@
 #ifndef MRA_INNER_H_INCL
 #define MRA_INNER_H_INCL
 
-#include "platform.h"
-#include "types.h"
-#include "tensorview.h"
-#include "tensor.h"
-#include "mxm.h"
+#include "mra/platform.h"
+#include "mra/types.h"
+#include "mra/tensorview.h"
+#include "mra/tensor.h"
+#include "mra/mxm.h"
 #include <cassert>
 
 namespace mra{

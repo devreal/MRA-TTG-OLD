@@ -1,13 +1,13 @@
 #ifndef FCUBE_FOR_MUL_H_INCL
 #define FCUBE_FOR_MUL_H_INCL
 
-#include "tensorview.h"
-#include "platform.h"
-#include "functiondata.h"
-#include "transform.h"
-#include "domain.h"
-#include "key.h"
-#include "types.h"
+#include "mra/tensorview.h"
+#include "mra/platform.h"
+#include "mra/functiondata.h"
+#include "mra/kernels.h"
+#include "mra/domain.h"
+#include "mra/key.h"
+#include "mra/types.h"
 #include <cassert>
 
 #define MAX_ORDER 64

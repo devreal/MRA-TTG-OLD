@@ -2,16 +2,16 @@
 #define MRA_TASKS_DERIVATIVE_H
 
 #include <ttg.h>
-#include "tensor.h"
-#include "tensorview.h"
-#include "functionnode.h"
-#include "functiondata.h"
-#include "kernels.h"
-#include "gaussian.h"
-#include "functionfunctor.h"
-#include "key.h"
-#include "domain.h"
-#include "options.h"
+#include "mra/tensor.h"
+#include "mra/tensorview.h"
+#include "mra/functionnode.h"
+#include "mra/functiondata.h"
+#include "mra/kernels.h"
+#include "mra/gaussian.h"
+#include "mra/functionfunctor.h"
+#include "mra/key.h"
+#include "mra/domain.h"
+#include "mra/options.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>

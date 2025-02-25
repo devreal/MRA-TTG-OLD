@@ -1,10 +1,10 @@
 #ifndef MRA_OUTER_H_INCL
 #define MRA_OUTER_H_INCL
 
-#include "platform.h"
-#include "types.h"
-#include "tensorview.h"
-#include "tensor.h"
+#include "mra/platform.h"
+#include "mra/types.h"
+#include "mra/tensorview.h"
+#include "mra/tensor.h"
 
 namespace mra{
 

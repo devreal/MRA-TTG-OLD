@@ -1,8 +1,8 @@
 #ifndef MRA_KERNELS_CHILD_SLICE_H
 #define MRA_KERNELS_CHILD_SLICE_H
 
-#include "key.h"
-#include "types.h"
+#include "mra/key.h"
+#include "mra/types.h"
 
 namespace mra {
   template<Dimension NDIM>

@@ -1,10 +1,10 @@
 #ifndef MRA_KERNELS_MULTIPLY_H
 #define MRA_KERNELS_MULTIPLY_H
 
-#include "platform.h"
-#include "types.h"
-#include "tensorview.h"
-#include "maxk.h"
+#include "mra/platform.h"
+#include "mra/types.h"
+#include "mra/tensorview.h"
+#include "mra/maxk.h"
 
 
 namespace mra {

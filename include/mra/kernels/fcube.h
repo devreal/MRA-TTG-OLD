@@ -1,8 +1,8 @@
 #ifndef MRA_FCUBE_H
 #define MRA_FCUBE_H
 
-#include "tensorview.h"
-#include "platform.h"
+#include "mra/tensorview.h"
+#include "mra/platform.h"
 
 namespace mra{
   /// Make outer product of quadrature points for vectorized algorithms
