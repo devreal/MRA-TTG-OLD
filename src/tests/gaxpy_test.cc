@@ -1,7 +1,7 @@
 #include <cassert>
 #include <ttg.h>
-#include "kernels/gaxpy.h"
-#include "tensor.h"
+#include "mra/kernels/gaxpy.h"
+#include "mra/tensor/tensor.h"
 
 int main(int argc, char **argv) {
 

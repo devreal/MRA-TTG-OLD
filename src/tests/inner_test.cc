@@ -1,7 +1,7 @@
 #include <cassert>
 #include <ttg.h>
-#include "kernels/inner.h"
-#include "tensor.h"
+#include "mra/ops/inner.h"
+#include "mra/tensor/tensor.h"
 
 #include <madness/tensor/tensor.h>
 #include <madness/world/print.h>

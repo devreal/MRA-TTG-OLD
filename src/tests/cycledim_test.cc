@@ -1,7 +1,7 @@
 #include <cassert>
 #include <ttg.h>
-#include "cycledim.h"
-#include "tensor.h"
+#include "mra/tensor/cycledim.h"
+#include "mra/tensor/tensor.h"
 
 int main(int argc, char **argv) {
 

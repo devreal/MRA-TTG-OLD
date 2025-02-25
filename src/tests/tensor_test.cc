@@ -1,7 +1,7 @@
 #include <cassert>
 #include <ttg.h>
 
-#include "tensor.h"
+#include "mra/tensor/tensor.h"
 
 
 

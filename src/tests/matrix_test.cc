@@ -1,7 +1,7 @@
 #include <cassert>
 #include <ttg.h>
-#include "mxm.h"
-#include "tensor.h"
+#include "mra/ops/mxm.h"
+#include "mra/tensor/tensor.h"
 
 using namespace mra;
 
