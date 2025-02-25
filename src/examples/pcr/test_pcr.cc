@@ -92,6 +92,7 @@ int main(int argc, char **argv) {
   size_type N = opt.parse("-N", 1);
   size_type K = opt.parse("-K", 10);
   int max_level = opt.parse("-l", -1);
+  int cores   = opt.parse("-c", -1); // -1: use all cores
 
   ttg::initialize(argc, argv, cores);
   mra::GLinitialize();
