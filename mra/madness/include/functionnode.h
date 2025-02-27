@@ -148,18 +148,12 @@ namespace mra {
           return m_coeffs;
         }
 
-        view_type coeffs_view(size_type i) {
-          /* assuming all dims > 1 == K */
-          const size_type K = m_coeffs.dim(1);
-          const size_type K2NDIM = std::pow(K, NDIM);
-          return view_type(m_coeffs.data() + (i*K2NDIM), K);
+        view_type coeffs_view(size_type i){
+          return m_coeffs.current_view()(i);
         }
 
         const_view_type coeffs_view(size_type i) const {
-          /* assuming all dims > 1 == K */
-          const size_type K = m_coeffs.dim(1);
-          const size_type K2NDIM = std::pow(K, NDIM);
-          return const_view_type(m_coeffs.data() + (i*K2NDIM), K);
+          return m_coeffs.current_view()(i);
         }
 
         key_type& key() {
