@@ -10,7 +10,7 @@
 #include "domain.h"
 #include "options.h"
 #include "allocator.h"
-#include "pmaps.h"
+#include "keymaps.h"
 
 #include <ttg/serialization/backends.h>
 #include <ttg/serialization/std/array.h>
@@ -966,7 +966,8 @@ void test_pcr(std::size_t N, std::size_t K) {
     gaussians[i] = mra::Gaussian<T, NDIM>(D[0], expnt, r);
   }
 
-  auto pmap = PartitionPmap<NDIM>();
+  auto pmap = PartitionPmap<NDIM>(); // process map
+  auto dmap = PartitionPmap<NDIM>(ttg::device::num_devices(), pmap.target_level()+1); // device map is one level below the process map
 
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
@@ -974,28 +975,37 @@ void test_pcr(std::size_t N, std::size_t K) {
   auto start = make_start(project_control);
   auto project = make_project(db, gauss_buffer, N, K, functiondata, T(1e-6), project_control, project_result);
   project->set_keymap(pmap);
+  project->set_devicemap(dmap);
   // C(P)
   auto compress = make_compress(N, K, functiondata, project_result, compress_result, "compress-cp");
   // compress returns a tuple
   std::get<0>(compress)->set_keymap(pmap);
+  std::get<0>(compress)->set_devicemap(dmap);
   std::get<1>(compress)->set_keymap(pmap);
+  std::get<1>(compress)->set_devicemap(dmap);
   // // R(C(P))
   auto reconstruct = make_reconstruct(N, K, functiondata, compress_result, reconstruct_result, "reconstruct-rcp");
   reconstruct->set_keymap(pmap);
+  reconstruct->set_devicemap(dmap);
   // C(R(C(P)))
   auto compress_r = make_compress(N, K, functiondata, reconstruct_result, compress_reconstruct_result, "compress-crcp");
   // compress returns a tuple
   std::get<0>(compress_r)->set_keymap(pmap);
+  std::get<0>(compress_r)->set_devicemap(dmap);
   std::get<1>(compress_r)->set_keymap(pmap);
+  std::get<1>(compress_r)->set_devicemap(dmap);
 
   // C(R(C(P))) - C(P)
   auto gaxpy = make_gaxpy(compress_reconstruct_result, compress_result, gaxpy_result, T(1.0), T(-1.0), N, K);
   gaxpy->set_keymap(pmap);
+  gaxpy->set_devicemap(dmap);
   // | C(R(C(P))) - C(P) |
   auto norm  = make_norm(N, K, gaxpy_result, norm_result);
   // norm returns a tuple
   std::get<0>(norm)->set_keymap(pmap);
+  std::get<0>(norm)->set_devicemap(dmap);
   std::get<1>(norm)->set_keymap(pmap);
+  std::get<1>(norm)->set_devicemap(dmap);
   // final check
   auto norm_check = ttg::make_tt([&](const mra::Key<NDIM>& key, const mra::Tensor<T, 1>& norms){
     // TODO: check for the norm within machine precision
