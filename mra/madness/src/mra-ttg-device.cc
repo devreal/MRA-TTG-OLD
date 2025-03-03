@@ -1020,8 +1020,8 @@ void test_pcr(std::size_t N, std::size_t K) {
     gaussians[i] = mra::Gaussian<T, NDIM>(D[0], expnt, r);
   }
 
-  auto pmap = PartitionPmap<NDIM>(); // process map
-  auto dmap = PartitionPmap<NDIM>(ttg::device::num_devices(), pmap.target_level()+1); // device map is one level below the process map
+  auto pmap = PartitionKeymap<NDIM>(); // process map
+  auto dmap = PartitionKeymap<NDIM>(ttg::device::num_devices(), pmap.target_level()+1); // device map is one level below the process map
 
   // put it into a buffer
   auto gauss_buffer = ttg::Buffer<mra::Gaussian<T, NDIM>>(std::move(gaussians), N);
