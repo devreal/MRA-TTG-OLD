@@ -108,7 +108,11 @@ auto make_project(
 
         /* temporaries */
         /* TODO: have make_scratch allocate pinned memory for us */
+#ifndef MRA_ENABLE_HOST
         auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::Allocate);
+#else
+        auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::SyncIn); // always allocate on host
+#endif
         const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
@@ -287,8 +291,12 @@ static auto make_compress(
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         const auto& hgT = functiondata.get_hgT();
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+#ifndef MRA_ENABLE_HOST
         auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::Allocate);
-  #ifndef MRA_ENABLE_HOST
+#else
+        auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::SyncIn); // always allocate on host
+#endif
+#ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
                                         tmp_scratch, d_sumsq);
         auto select_in = [&](const auto& in) {
@@ -304,7 +312,7 @@ static auto make_compress(
         input.add(result_norm.buffer());
 
         co_await ttg::device::select(input);
-  #endif
+#endif
 
         /* some constness checks for the API */
         static_assert(std::is_const_v<std::remove_reference_t<decltype(in0)>>);
