@@ -339,9 +339,9 @@ static auto make_compress(
 
         /* wait for kernel and transfer sums back */
   #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::wait(d_sumsq, result_norm().buffer(),
-                                   norms0(), norms1(), norms2(), norms3(),
-                                   norms4(), norms5(), norms6(), norms7());
+        co_await ttg::device::wait(d_sumsq, result_norm.buffer(),
+                                   norms0.buffer(), norms1.buffer(), norms2.buffer(), norms3.buffer(),
+                                   norms4.buffer(), norms5.buffer(), norms6.buffer(), norms7.buffer());
   #endif
 
         norms0.verify("reconstruct-norm0"); norms1.verify("reconstruct-norm1"); norms2.verify("reconstruct-norm2"); norms3.verify("reconstruct-norm3");
@@ -514,7 +514,7 @@ auto make_reconstruct(
 
 #ifndef MRA_ENABLE_HOST
     /* wait for norms to come back and verify */
-    co_await ttg::device::wait(result_norm().buffer(), from_parent_norms.buffer(),
+    co_await ttg::device::wait(result_norm.buffer(), from_parent_norms.buffer(),
                                r_norms[0].buffer(), r_norms[1].buffer(), r_norms[2].buffer(), r_norms[3].buffer(),
                                r_norms[4].buffer(), r_norms[5].buffer(), r_norms[6].buffer(), r_norms[7].buffer());
 #endif // MRA_ENABLE_HOST

@@ -44,17 +44,6 @@ namespace mra {
         norm_tensor_type m_norms;
 #endif // MRA_CHECK_NORMS
 
-        void allocate_norms(size_type N) {
-#ifdef MRA_CHECK_NORMS
-#ifdef MRA_ENABLE_HOST
-          m_norms = norm_tensor_type(N, ttg::scope::Allocate);
-#else
-          m_norms = norm_tensor_type(N, ttg::scope::SyncIn);
-#endif // MRA_ENABLE_HOST
-#endif // MRA_CHECK_NORMS
-        }
-
-
       public:
 
         FunctionNodeBase() = default;
@@ -63,7 +52,6 @@ namespace mra {
         FunctionNodeBase(const key_type& key)
         : m_key(key)
         , m_coeffs()
-        , m_norms()
         { }
 
         /* constructs a node with metadata for N functions and all coefficients zero */
@@ -71,7 +59,6 @@ namespace mra {
         : m_key(key)
         , m_coeffs()
         , m_num_func(N)
-        , m_norms()
         { }
 
         FunctionNodeBase(const key_type& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
@@ -82,7 +69,6 @@ namespace mra {
         , m_coeffs(make_dims<ndim()+1>(N, K), scope)
 #endif
         , m_num_func(N)
-        , m_norms()
         { }
 
         FunctionNodeBase(FunctionNodeBase&& other) = default;
