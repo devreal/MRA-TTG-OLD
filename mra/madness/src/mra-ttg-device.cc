@@ -929,8 +929,8 @@ auto make_norm(size_type N, size_type K,
 template<typename T, mra::Dimension NDIM>
 void test(std::size_t N, std::size_t K) {
   auto functiondata = mra::FunctionData<T,NDIM>(K);
-  auto D = std::make_unique<mra::Domain<NDIM>>();
-  D->set_cube(-6.0,6.0);
+  auto D = std::make_unique<mra::Domain<NDIM>[]>(1);
+  D[0].set_cube(-6.0,6.0);
 
   srand48(5551212); // for reproducible results
   for (int i = 0; i < 10000; ++i) drand48(); // warmup generator
