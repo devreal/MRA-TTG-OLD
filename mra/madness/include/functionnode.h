@@ -22,17 +22,203 @@ namespace mra {
       std::array<size_type, NDIM> make_dims(size_type N, size_type K) {
         return make_dims_helper<NDIM>(N, K, std::make_index_sequence<NDIM-1>{});
       }
+
+      template<typename T, Dimension NDIM>
+      class FunctionNodeBase {
+      public: // temporarily make everything public while we figure out what we are doing
+        static constexpr Dimension ndim() { return NDIM; }
+        using key_type = Key<NDIM>;
+        using value_type = T;
+        using tensor_type = Tensor<value_type,NDIM+1>;
+        using view_type   = TensorView<value_type, NDIM>;
+        using const_view_type   = TensorView<const value_type, NDIM>;
+        static constexpr bool is_function_node = true;
+        using norm_tensor_type = Tensor<value_type, 1>;
+        using norm_tensor_view_type = TensorView<const value_type, NDIM>;
+
+      protected:
+        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
+        tensor_type m_coeffs; //< if !is_leaf these are junk (and need not be communicated)
+        size_type m_num_func = 0;
+#ifdef MRA_CHECK_NORMS
+        norm_tensor_type m_norms;
+#endif // MRA_CHECK_NORMS
+
+        void allocate_norms(size_type N) {
+#ifdef MRA_CHECK_NORMS
+#ifdef MRA_ENABLE_HOST
+          m_norms = norm_tensor_type(N, ttg::scope::Allocate);
+#else
+          m_norms = norm_tensor_type(N, ttg::scope::SyncIn);
+#endif // MRA_ENABLE_HOST
+#endif // MRA_CHECK_NORMS
+        }
+
+
+      public:
+
+        FunctionNodeBase() = default;
+
+        /* constructs a node with metadata for N functions and all coefficients zero */
+        FunctionNodeBase(const key_type& key)
+        : m_key(key)
+        , m_coeffs()
+        , m_norms()
+        { }
+
+        /* constructs a node with metadata for N functions and all coefficients zero */
+        FunctionNodeBase(const key_type& key, size_type N)
+        : m_key(key)
+        , m_coeffs()
+        , m_num_func(N)
+        , m_norms()
+        { }
+
+        FunctionNodeBase(const key_type& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
+        : m_key(key)
+#ifdef MRA_ENABLE_HOST
+        , m_coeffs(make_dims<ndim()+1>(N, K), ttg::scope::SyncIn) // make sure we allocate on host
+#else
+        , m_coeffs(make_dims<ndim()+1>(N, K), scope)
+#endif
+        , m_num_func(N)
+        , m_norms()
+        { }
+
+        FunctionNodeBase(FunctionNodeBase&& other) = default;
+        FunctionNodeBase(const FunctionNodeBase& other) = delete;
+
+        FunctionNodeBase& operator=(FunctionNodeBase&& other) = default;
+        FunctionNodeBase& operator=(const FunctionNodeBase& other) = delete;
+
+
+        /**
+         * Allocate space for coefficients using K.
+         * The node must be empty before and will not be empty afterwards.
+         */
+        void allocate(size_type K, ttg::scope scope = ttg::scope::SyncIn) {
+          if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
+          if (m_num_func == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
+#ifndef MRA_ENABLE_HOST
+          m_coeffs = tensor_type(detail::make_dims<ndim()+1>(m_num_func, K), scope);
+#else
+          m_coeffs = tensor_type(detail::make_dims<ndim()+1>(m_num_func, K), ttg::scope::SyncIn); // make sure we allocate on host
+#endif
+        }
+
+        /* with C++23 we could the following:
+        auto& coeffs(this FunctionsReconstructedNode&& self) {
+          return self.m_coeffs;
+        }
+        */
+        auto& coeffs() {
+          return m_coeffs;
+        }
+
+        const auto& coeffs() const {
+          return m_coeffs;
+        }
+
+        view_type coeffs_view(size_type i){
+          return m_coeffs.current_view()(i);
+        }
+
+        const view_type coeffs_view(size_type i) const {
+          return m_coeffs.current_view()(i);
+        }
+
+#ifdef MRA_CHECK_NORMS
+        auto& norms() {
+          return m_norms;
+        }
+
+        const auto& norms() const {
+          return m_norms;
+        }
+
+        view_type norms_view(size_type i) {
+          return m_norms.current_view()(i);
+        }
+
+        const view_type norms_view(size_type i) const {
+          return m_norms.current_view()(i);
+        }
+
+#else  // MRA_CHECK_NORMS
+
+        auto norms() {
+          return ttg::Void{};
+        }
+
+        const auto norms() const {
+          return ttg::Void{};
+        }
+
+        view_type norms_view(size_type i) {
+          return ttg::Void{};
+        }
+
+        const view_type norms_view(size_type i) const {
+          return ttg::Void{};
+        }
+
+#endif // MRA_CHECK_NORMS
+
+        key_type& key() {
+          return m_key;
+        }
+
+        const key_type& key() const {
+          return m_key;
+        }
+
+        size_type count() const {
+          return m_num_func;
+        }
+
+        bool empty() const {
+          return m_coeffs.empty();
+        }
+
+        auto& buffer() {
+          return m_coeffs.buffer();
+        }
+
+        const auto& buffer() const {
+          return m_coeffs.buffer();
+        }
+
+        template <typename Archive>
+        void serialize(Archive& ar) {
+          ar& this->m_key;
+          ar& this->m_coeffs;
+#ifdef MRA_CHECK_NORMS
+          ar& this->m_norms;
+#endif // MRA_CHECK_NORMS
+        }
+
+        template <typename Archive>
+        void serialize(Archive& ar, const unsigned int) {
+          serialize(ar);
+        }
+      };
     } // namespace detail
 
     /* like FunctionReconstructedNode but for N functions */
     template <typename T, Dimension NDIM>
-    class FunctionsReconstructedNode : public ttg::TTValue<FunctionsReconstructedNode<T, NDIM>> {
-      public: // temporarily make everything public while we figure out what we are doing
+    class FunctionsReconstructedNode : public ttg::TTValue<FunctionsReconstructedNode<T, NDIM>>,
+                                       public detail::FunctionNodeBase<T, NDIM> {
+      public:
         using key_type = Key<NDIM>;
+        using value_type = T;
         using tensor_type = Tensor<T,NDIM+1>;
         using view_type   = TensorView<T, NDIM>;
         using const_view_type   = TensorView<const T, NDIM>;
         static constexpr bool is_function_node = true;
+        using norm_tensor_type = Tensor<T, 1>;
+        using norm_tensor_view_type = TensorView<const T, NDIM>;
+        using base_type = detail::FunctionNodeBase<T, NDIM>;
+        constexpr static Dimension ndim() { return NDIM; }
 
       private:
         struct function_metadata {
@@ -47,25 +233,21 @@ namespace mra {
           }
         };
 
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<function_metadata> m_metadata;
-        tensor_type m_coeffs; //< if !is_leaf these are junk (and need not be communicated)
 
       public:
         FunctionsReconstructedNode() = default;
 
         /* constructs a node with metadata for N functions and all coefficients zero */
         FunctionsReconstructedNode(const Key<NDIM>& key, size_type N)
-        : m_key(key)
+        : base_type(key, N)
         , m_metadata(N)
-        , m_coeffs()
         { }
 
         FunctionsReconstructedNode(const Key<NDIM>& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
-        : m_key(key)
+        : base_type(key, N, K, scope)
         , m_metadata(N)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, K), scope)
-        {}
+        { }
 
 
         FunctionsReconstructedNode(FunctionsReconstructedNode&& other) = default;
@@ -79,10 +261,7 @@ namespace mra {
          * The node must be empty before and will not be empty afterwards.
          */
         void allocate(size_type K, ttg::scope scope = ttg::scope::SyncIn) {
-          if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
-          size_type N = m_metadata.size();
-          if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
-          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, K), scope);
+          base_type::allocate(K, scope);
         }
 
         bool has_children(size_type i) const {
@@ -135,48 +314,10 @@ namespace mra {
           return m_metadata[i].sum;
         }
 
-        /* with C++23 we could the following:
-        auto& coeffs(this FunctionsReconstructedNode&& self) {
-          return self.m_coeffs;
-        }
-        */
-        auto& coeffs() {
-          return m_coeffs;
-        }
-
-        const auto& coeffs() const {
-          return m_coeffs;
-        }
-
-        view_type coeffs_view(size_type i){
-          return m_coeffs.current_view()(i);
-        }
-
-        const_view_type coeffs_view(size_type i) const {
-          return m_coeffs.current_view()(i);
-        }
-
-        key_type& key() {
-          return m_key;
-        }
-
-        const key_type& key() const {
-          return m_key;
-        }
-
-        size_type count() const {
-          return m_metadata.size();
-        }
-
-        bool empty() const {
-          return m_coeffs.empty();
-        }
-
         template <typename Archive>
         void serialize(Archive& ar) {
-          ar& this->m_key;
+          base_type::serialize(ar);
           ar& this->m_metadata;
-          ar& this->m_coeffs;
         }
 
         template <typename Archive>
@@ -187,33 +328,33 @@ namespace mra {
 
 
     template <typename T, Dimension NDIM>
-    class FunctionsCompressedNode : public ttg::TTValue<FunctionsCompressedNode<T, NDIM>> {
+    class FunctionsCompressedNode : public ttg::TTValue<FunctionsCompressedNode<T, NDIM>>,
+                                    public detail::FunctionNodeBase<T, NDIM> {
       public: // temporarily make everything public while we figure out what we are doing
         static constexpr bool is_function_node = true;
         using key_type          = Key<NDIM>;
         using view_type         = TensorView<T, NDIM>;
         using const_view_type   = TensorView<const T, NDIM>;
+        using norm_tensor_type = Tensor<T, 1>;
+        using norm_tensor_view_type = TensorView<const T, NDIM>;
+        using base_type = detail::FunctionNodeBase<T, NDIM>;
 
       private:
-        key_type m_key; //< Key associated with this node to facilitate computation from otherwise unknown parent/child
         std::vector<std::array<bool, Key<NDIM>::num_children()>> m_is_child_leafs; //< True if that child is leaf on tree
-        Tensor<T,NDIM+1> m_coeffs; //< Always significant
 
       public:
         FunctionsCompressedNode() = default; // needed for serialization
 
         /* constructs a node for N functions with zero coefficients */
         FunctionsCompressedNode(const Key<NDIM>& key, size_type N)
-        : m_key(key)
-        , m_coeffs()
+        : base_type(key, N)
         , m_is_child_leafs(N)
         {
           set_all_child_leafs(true);
         }
 
         FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
-        : m_key(key)
-        , m_coeffs(detail::make_dims<NDIM+1>(N, 2*K), scope)
+        : base_type(key, N, 2*K)
         , m_is_child_leafs(N)
         { }
 
@@ -222,10 +363,7 @@ namespace mra {
          * The node must be empty before and will not be empty afterwards.
          */
         void allocate(size_type K, ttg::scope scope = ttg::scope::SyncIn) {
-          if (!empty()) throw std::runtime_error("Reallocating non-empty FunctionNode not allowed!");
-          size_type N = m_is_child_leafs.size();
-          if (N == 0) throw std::runtime_error("Cannot reallocate FunctionNode with N = 0");
-          m_coeffs = Tensor<T,NDIM+1>(detail::make_dims<NDIM+1>(N, 2*K), scope);
+          base_type::allocate(2*K, scope);
         }
 
         FunctionsCompressedNode(FunctionsCompressedNode&& other) = default;
@@ -270,49 +408,10 @@ namespace mra {
           return result;
         }
 
-        auto& coeffs() {
-          return m_coeffs;
-        }
-
-        const auto& coeffs() const {
-          return m_coeffs;
-        }
-
-        key_type& key() {
-          return m_key;
-        }
-
-        const key_type& key() const {
-          return m_key;
-        }
-
-        size_type count() const {
-          return m_is_child_leafs.size();
-        }
-
-        bool empty() const {
-          return m_coeffs.empty();
-        }
-
-        view_type coeffs_view(size_type i) {
-          /* assuming all dims > 1 == K */
-          const size_type K = m_coeffs.dim(1);
-          const size_type K2NDIM = std::pow(K, NDIM);
-          return view_type(m_coeffs.data() + (i*K2NDIM), K);
-        }
-
-        const_view_type coeffs_view(size_type i) const {
-          /* assuming all dims > 1 == K */
-          const size_type K = m_coeffs.dim(1);
-          const size_type K2NDIM = std::pow(K, NDIM);
-          return const_view_type(m_coeffs.data() + (i*K2NDIM), K);
-        }
-
         template <typename Archive>
         void serialize(Archive& ar) {
-          ar& this->m_key;
+          base_type::serialize(ar);
           ar& this->m_is_child_leafs;
-          ar& this->m_coeffs;
         }
 
         template <typename Archive>

@@ -63,13 +63,13 @@ namespace mra {
 
     // Default is to try to optimize the target_level, but you can specify any value > 0
     PartitionKeymap(int np = ttg::default_execution_context().size(), const Level target_level=0)
-    : m_np(np)
+    : m_num_pe(np)
     {
       if (target_level > 0) {
         this->m_target_level = target_level;
-      } else if (m_np > 0) {
+      } else if (m_num_pe > 0) {
         this->m_target_level = 1;
-        int p = m_np-1;
+        int p = m_num_pe-1;
         while (p) {
           p >>= NDIM;
           this->m_target_level++;
@@ -86,7 +86,7 @@ namespace mra {
       else {
         hash = key.parent(key.level() - m_target_level).hash();
       }
-      return (m_np > 0) ? hash%m_np : 0;
+      return (m_num_pe > 0) ? hash%m_num_pe : 0;
     }
 
     Level target_level() const {

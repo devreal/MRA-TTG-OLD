@@ -12,5 +12,6 @@
 #include "kernels/reconstruct.h"
 #include "kernels/multiply.h"
 #include "kernels/norm.h"
+#include "kernels/simple_norm.h"
 
 #endif // HAVE_KERNELS_H

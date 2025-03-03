@@ -4,7 +4,7 @@ add_executable(mra-device-host-parsec
                madness/src/mra-ttg-device.cc
                madness/src/gl.cc
                madness/src/twoscale.cc)
-target_compile_definitions(mra-device-host-parsec PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1)
+target_compile_definitions(mra-device-host-parsec PUBLIC MRA_ENABLE_HOST=1 TTG_USE_PARSEC=1 MRA_CHECK_NORMS=1)
 target_link_libraries(mra-device-host-parsec PUBLIC MADworld ttg-parsec)
 
 add_executable(mra-gaxpytest madness/tests/gaxpy_test.cc)
