@@ -17,49 +17,42 @@ namespace mra {
       using value_type = T;
 
     private:
-      detail::FunctionNodeBase<T, NDIM>& m_node;
-      mra::Tensor<T, 1> m_norms;
-      bool m_initial = false;
+      std::vector<detail::FunctionNodeBase<T, NDIM>*> m_nodes;
+      std::vector<bool> m_initial;
+      mra::Tensor<T, 2> m_norms; // M x N matrix of norms (M: number of nodes, N: number of functions)
 
     public:
-      template<typename NodeType>
-      FunctionNorms(NodeType&& node)
-      : m_node(const_cast<std::decay_t<NodeType>&>(node))
-      , m_norms()
-      , m_initial(node.norms().empty())
+      template<typename NodeT, typename... NodeTs>
+      FunctionNorms(NodeT&& node, NodeTs&&... nodes)
+      : m_nodes({&const_cast<std::decay_t<NodeT>&>(node), &const_cast<std::decay_t<NodeTs>&>(nodes)...})
+      , m_initial({node.norms().empty(), nodes.norms().empty()...})
       {
-        if (m_initial && std::is_const_v<NodeType>) {
-          throw std::runtime_error("Cannot compute norms for a const node!");
-        }
-        if (!m_initial) {
-          m_norms = Tensor<T, 1>(node.count(), ttg::scope::Allocate);
-        } else {
-          m_node.norms() = Tensor<T, 1>(m_node.count());
+#ifndef MRA_ENABLE_HOST
+        m_norms = Tensor<T, 2>({static_cast<size_type>(sizeof...(NodeTs))+1, node.count()}, ttg::scope::Allocate);
+#else
+        m_norms = Tensor<T, 2>({static_cast<size_type>(sizeof...(NodeTs))+1, node.count()}, ttg::scope::SyncIn);
+#endif // MRA_ENABLE_HOST
+        for (int i = 0; i < m_nodes.size(); ++i) {
+          auto& node = *m_nodes[i];
+          if (m_initial[i]) {
+            // copy the norms into the buffer
+            node.norms() = typename detail::FunctionNodeBase<T, NDIM>::norm_tensor_type(node.count());
+          }
         }
       }
 
       auto& buffer() {
-        if (m_initial) {
-          /* we will fill the norms of the node */
-          return m_node.norms().buffer();
-        } else {
-          /* compute the norms in our local buffer */
-          return m_norms.buffer();
-        }
+        return m_norms.buffer();
       }
 
       void compute() {
-        if (!m_node.empty()) {
-          if (m_initial) {
-            assert(m_node.norms().buffer().is_current_on(ttg::device::current_device()));
-            assert(!m_node.norms().buffer().empty());
-            /* we will fill the norms of the node */
-            submit_simple_norm_kernel(m_node.key(), m_node.coeffs().current_view(), m_node.count(), m_node.norms().current_view());
-          } else {
-            assert(m_norms.buffer().is_current_on(ttg::device::current_device()));
-            assert(!m_norms.buffer().empty());
-            /* we will compute the norms in our local buffer */
-            submit_simple_norm_kernel(m_node.key(), m_node.coeffs().current_view(), m_node.count(), m_norms.current_view());
+        assert(m_norms.buffer().is_current_on(ttg::device::current_device()));
+        assert(!m_norms.buffer().empty());
+        /* we will compute the norms in our local buffer */
+        for (int i = 0; i < m_nodes.size(); ++i) {
+          auto& node = *m_nodes[i];
+          if (m_initial[i] && !node.empty()){
+            submit_simple_norm_kernel(node.key(), node.coeffs().current_view(), node.count(), m_norms.current_view()(i));
           }
         }
       }
@@ -68,27 +61,29 @@ namespace mra {
        * Verify the norms computed by compute() against the norms of the node.
        * Only performs the validation if the norms was not computed initially by this object.
        * Throws a runtime_error if the norms do not match.
-       * Returns true if the norms match.
-       * Returns false if the norms were computed initially by this object and no verification is needed.
        */
-      bool verify(const std::string& name) const {
-        if (!m_node.empty()) {
-          if (!m_initial) {
-            assert(m_node.norms().buffer().is_valid_on(ttg::device::Device::host()));
-            auto* node_norms = m_node.norms().data();
-            assert(m_norms.buffer().is_current_on(ttg::device::Device::host()));
-            auto* norms = m_norms.current_view().data();
-            for (size_type i = 0; i < m_node.count(); ++i) {
-              if (std::abs(node_norms[i] - norms[i]) > 1e-15) {
-                std::cerr << name << ": failed to verify norm for function " << i << " of " << m_node.key()
-                          << ": expected " << norms[i] << ", found " << node_norms[i] << std::endl;
+      void verify(const std::string& name) const {
+        assert(m_norms.buffer().is_current_on(ttg::device::current_device()));
+        for (int i = 0; i < m_nodes.size(); ++i) {
+          auto& node = *m_nodes[i];
+          if (node.empty()) continue;
+          if (!m_initial[i]) {
+            // verify the norms
+            assert(node.norms().buffer().is_valid_on(ttg::device::current_device()));
+            auto* node_norms = node.norms().data();
+            auto norm_view = m_norms.current_view()(i);
+            for (size_type j = 0; j < node.count(); ++j) {
+              if (std::abs(node_norms[j] - norm_view[j]) > 1e-15) {
+                std::cerr << name << ": failed to verify norm for function " << j << " of " << node.key()
+                          << ": expected " << norm_view[j] << ", found " << node_norms[j] << std::endl;
                 throw std::runtime_error("Failed to verify norm!");
               }
             }
+          } else {
+            // store the norm into the node
+            node.norms().current_view() = m_norms.current_view()(i);
           }
-          return true;
         }
-        return false;
       }
     };
 
@@ -121,8 +116,8 @@ namespace mra {
 #endif // MRA_CHECK_NORMS
 
     // deduction guide
-    template<typename NodeT>
-    FunctionNorms(NodeT&&) -> FunctionNorms<typename std::decay_t<NodeT>::value_type, std::decay_t<NodeT>::ndim()>;
+    template<typename NodeT, typename... NodeTs>
+    FunctionNorms(NodeT&&, NodeTs...) -> FunctionNorms<typename std::decay_t<NodeT>::value_type, std::decay_t<NodeT>::ndim()>;
 
 } // namespace mra
 

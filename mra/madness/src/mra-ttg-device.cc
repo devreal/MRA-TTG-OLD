@@ -248,9 +248,6 @@ static auto make_compress(
       // create empty, may be reset if needed
       mra::FunctionsReconstructedNode<T, NDIM> p(key, N);
 
-      FunctionNorms<T, NDIM> norms0(in0), norms1(in1), norms2(in2), norms3(in3),
-                             norms4(in4), norms5(in5), norms6(in6), norms7(in7);
-
       /* check if all inputs are empty */
       bool all_empty = in0.empty() && in1.empty() && in2.empty() && in3.empty() &&
                        in4.empty() && in5.empty() && in6.empty() && in7.empty();
@@ -282,8 +279,6 @@ static auto make_compress(
         p.set_all_leaf(false);
         assert(p.is_all_leaf() == false);
 
-        auto result_norm = FunctionNorms(result);
-
         //std::cout << name << " " << key << " all leafs " << result.is_all_child_leaf() << std::endl;
 
         /* stores sumsq for each child and for result at the end of the kernel */
@@ -291,6 +286,9 @@ static auto make_compress(
         auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
         const auto& hgT = functiondata.get_hgT();
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+
+        FunctionNorms<T, NDIM> norms(in0, in1, in2, in3, in4, in5, in6, in7, result);
+
 #ifndef MRA_ENABLE_HOST
         auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::Allocate);
 #else
@@ -309,7 +307,7 @@ static auto make_compress(
         select_in(in4); select_in(in5);
         select_in(in6); select_in(in7);
 
-        input.add(result_norm.buffer());
+        input.add(norms.buffer());
 
         co_await ttg::device::select(input);
 #endif
@@ -333,19 +331,14 @@ static auto make_compress(
                               tmp_scratch.device_ptr(), d_sumsq.current_device_ptr(), input_views,
                               ttg::device::current_stream());
 
-        norms0.compute(); norms1.compute(); norms2.compute(); norms3.compute();
-        norms4.compute(); norms5.compute(); norms6.compute(); norms7.compute();
-        result_norm.compute();
+        norms.compute();
 
         /* wait for kernel and transfer sums back */
   #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::wait(d_sumsq, result_norm.buffer(),
-                                   norms0.buffer(), norms1.buffer(), norms2.buffer(), norms3.buffer(),
-                                   norms4.buffer(), norms5.buffer(), norms6.buffer(), norms7.buffer());
+        co_await ttg::device::wait(d_sumsq, norms.buffer());
   #endif
 
-        norms0.verify("reconstruct-norm0"); norms1.verify("reconstruct-norm1"); norms2.verify("reconstruct-norm2"); norms3.verify("reconstruct-norm3");
-        norms4.verify("reconstruct-norm4"); norms5.verify("reconstruct-norm5"); norms6.verify("reconstruct-norm6"); norms7.verify("reconstruct-norm7");
+        norms.verify("reconstruct");
 
         auto* d_sumsq_arr = d_sumsq.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
@@ -410,9 +403,6 @@ auto make_reconstruct(
     auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
     mra::KeyChildren<NDIM> children(key);
 
-    FunctionNorms<T,NDIM> node_norms(node);
-    FunctionNorms<T,NDIM> from_parent_norms(from_parent);
-
     // Send empty interior node to result tree
     auto r_empty = mra::FunctionsReconstructedNode<T,NDIM>(key, N);
     r_empty.set_all_leaf(false);
@@ -472,24 +462,19 @@ auto make_reconstruct(
       r_arr[i].allocate(K, ttg::scope::Allocate);
     }
 
-    FunctionNorms<T,NDIM> result_norm(node);
-    FunctionNorms<T,NDIM> parent_norm(from_parent);
-    auto r_norms = [&]<std::size_t... Is>(std::index_sequence<Is...>){
-      return std::array{FunctionNorms(r_arr[Is])...};
+    auto norms = [&]<std::size_t... Is>(std::index_sequence<Is...>){
+      return FunctionNorms(node, from_parent, r_arr[Is]...);
     }(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 
 #ifndef MRA_ENABLE_HOST
     // helper lambda to pick apart the std::array
     auto make_inputs = [&]<std::size_t... Is>(std::index_sequence<Is...>){
       return ttg::device::Input(hg.buffer(), tmp_scratch,
-                                (r_norms[Is].buffer())...,
                                 (r_arr[Is].coeffs().buffer())...);
     };
     auto inputs = make_inputs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     inputs.add(from_parent.coeffs().buffer());
     inputs.add(node.coeffs().buffer());
-    inputs.add(result_norm.buffer());
-    inputs.add(parent_norm.buffer());
     /* select a device */
     co_await ttg::device::select(inputs);
 #endif
@@ -505,21 +490,14 @@ auto make_reconstruct(
     submit_reconstruct_kernel(key, N, K, node_view, hg_view, from_parent_view,
                               r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
 
-#ifdef MRA_CHECK_NORMS
-    for (int i = 0; i < key.num_children(); ++i) {
-      r_norms[i].compute();
-    }
-    result_norm.compute();
-    from_parent_norms.compute();
+    norms.compute();
 
+#ifdef MRA_CHECK_NORMS
 #ifndef MRA_ENABLE_HOST
     /* wait for norms to come back and verify */
-    co_await ttg::device::wait(result_norm.buffer(), from_parent_norms.buffer(),
-                               r_norms[0].buffer(), r_norms[1].buffer(), r_norms[2].buffer(), r_norms[3].buffer(),
-                               r_norms[4].buffer(), r_norms[5].buffer(), r_norms[6].buffer(), r_norms[7].buffer());
+    co_await ttg::device::wait(norms.buffer());
 #endif // MRA_ENABLE_HOST
-    result_norm.verify("reconstruct-result-norm");
-    from_parent_norms.verify("reconstruct-parent-norm");
+    norms.verify("reconstruct");
 #endif // MRA_CHECK_NORMS
 
     for (auto it=children.begin(); it!=children.end(); ++it) {
