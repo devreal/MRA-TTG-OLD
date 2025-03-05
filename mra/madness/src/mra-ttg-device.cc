@@ -140,7 +140,7 @@ auto make_project(
 
         /* wait and get is_leaf back */
   #ifndef MRA_ENABLE_HOST
-        co_await ttg::device::wait(is_leafs, result_norms().buffer());
+        co_await ttg::device::wait(is_leafs, result_norms.buffer());
   #endif
         const bool* is_leafs_arr = is_leafs.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
