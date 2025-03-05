@@ -64,18 +64,20 @@ namespace mra {
        */
       void verify(const std::string& name) const {
         assert(m_norms.buffer().is_current_on(ttg::device::current_device()));
+        assert(m_norms.buffer().is_current_on(ttg::device::Device::host()));
+        auto norms_view = m_norms.view_on(ttg::device::Device::host());
         for (int i = 0; i < m_nodes.size(); ++i) {
           auto& node = *m_nodes[i];
           if (node.empty()) continue;
+          assert(node.norms().buffer().is_valid_on(ttg::device::Device::host()));
           if (!m_initial[i]) {
             // verify the norms
-            assert(node.norms().buffer().is_valid_on(ttg::device::current_device()));
-            auto* node_norms = node.norms().data();
-            auto norm_view = m_norms.current_view()(i);
+            auto node_norms = node.norms().view_on(ttg::device::Device::host());
+            auto norm_view = norms_view(i);
             for (size_type j = 0; j < node.count(); ++j) {
-              if (std::abs(node_norms[j] - norm_view[j]) > 1e-15) {
+              if (std::abs(node_norms(j) - norm_view(j)) > 1e-15) {
                 std::cerr << name << ": failed to verify norm for function " << j << " of " << node.key()
-                          << ": expected " << norm_view[j] << ", found " << node_norms[j] << std::endl;
+                          << ": expected " << norm_view(j) << ", found " << node_norms(j) << std::endl;
                 throw std::runtime_error("Failed to verify norm!");
               }
             }
