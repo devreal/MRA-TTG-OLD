@@ -99,7 +99,7 @@ auto make_project(
         // allocate tensor
         result = node_type(key, N, K, ttg::scope::Allocate);
         tensor_type& coeffs = result.coeffs();
-        auto result_norms = FunctionNorms(result);
+        auto result_norms = FunctionNorms("project", result);
 
         /* global function data */
         // TODO: need to make our own FunctionData with dynamic K
@@ -287,7 +287,7 @@ static auto make_compress(
         const auto& hgT = functiondata.get_hgT();
         auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
-        FunctionNorms<T, NDIM> norms(in0, in1, in2, in3, in4, in5, in6, in7, result);
+        FunctionNorms<T, NDIM> norms("compress", in0, in1, in2, in3, in4, in5, in6, in7, result);
 
 #ifndef MRA_ENABLE_HOST
         auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::Allocate);
@@ -338,7 +338,7 @@ static auto make_compress(
         co_await ttg::device::wait(d_sumsq, norms.buffer());
   #endif
 
-        norms.verify("reconstruct");
+        norms.verify();
 
         auto* d_sumsq_arr = d_sumsq.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
@@ -463,7 +463,7 @@ auto make_reconstruct(
     }
 
     auto norms = [&]<std::size_t... Is>(std::index_sequence<Is...>){
-      return FunctionNorms(node, from_parent, r_arr[Is]...);
+      return FunctionNorms("reconstruct", node, from_parent, r_arr[Is]...);
     }(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 
 #ifndef MRA_ENABLE_HOST
@@ -497,7 +497,7 @@ auto make_reconstruct(
     /* wait for norms to come back and verify */
     co_await ttg::device::wait(norms.buffer());
 #endif // MRA_ENABLE_HOST
-    norms.verify("reconstruct");
+    norms.verify();
 #endif // MRA_CHECK_NORMS
 
     for (auto it=children.begin(); it!=children.end(); ++it) {

@@ -20,12 +20,14 @@ namespace mra {
       std::vector<detail::FunctionNodeBase<T, NDIM>*> m_nodes;
       std::vector<bool> m_initial;
       mra::Tensor<T, 2> m_norms; // M x N matrix of norms (M: number of nodes, N: number of functions)
+      std::string m_name;
 
     public:
       template<typename NodeT, typename... NodeTs>
-      FunctionNorms(NodeT&& node, NodeTs&&... nodes)
+      FunctionNorms(std::string name, NodeT&& node, NodeTs&&... nodes)
       : m_nodes({&const_cast<std::decay_t<NodeT>&>(node), &const_cast<std::decay_t<NodeTs>&>(nodes)...})
       , m_initial({node.norms().empty(), nodes.norms().empty()...})
+      , m_name(std::move(name))
       {
 #ifndef MRA_ENABLE_HOST
         m_norms = Tensor<T, 2>({static_cast<size_type>(sizeof...(NodeTs))+1, node.count()}, ttg::scope::Allocate);
@@ -52,6 +54,7 @@ namespace mra {
         for (int i = 0; i < m_nodes.size(); ++i) {
           auto& node = *m_nodes[i];
           if (m_initial[i] && !node.empty()){
+            std::cout << "norm compute " << m_name << " " << i << " " << node.key() << std::endl;
             submit_simple_norm_kernel(node.key(), node.coeffs().current_view(), node.count(), m_norms.current_view()(i));
           }
         }
@@ -62,7 +65,7 @@ namespace mra {
        * Only performs the validation if the norms was not computed initially by this object.
        * Throws a runtime_error if the norms do not match.
        */
-      void verify(const std::string& name) const {
+      void verify() const {
         assert(m_norms.buffer().is_current_on(ttg::device::current_device()));
         assert(m_norms.buffer().is_current_on(ttg::device::Device::host()));
         auto norms_view = m_norms.view_on(ttg::device::Device::host());
@@ -75,15 +78,17 @@ namespace mra {
             auto node_norms = node.norms().view_on(ttg::device::Device::host());
             auto norm_view = norms_view(i);
             for (size_type j = 0; j < node.count(); ++j) {
+              std::cout << "norm verify " << m_name << " " << i << " " << node.key() << " expected " << norm_view(j) << " found " << node_norms(j) << std::endl;
               if (std::abs(node_norms(j) - norm_view(j)) > 1e-15) {
-                std::cerr << name << ": failed to verify norm for function " << j << " of " << node.key()
+                std::cerr << m_name << ": failed to verify norm for function " << j << " of " << node.key()
                           << ": expected " << norm_view(j) << ", found " << node_norms(j) << std::endl;
                 throw std::runtime_error("Failed to verify norm!");
               }
             }
           } else {
             // store the norm into the node
-            node.norms().current_view() = m_norms.current_view()(i);
+            std::cout << "norm verify-set " << m_name << " " << i << " " << node.key() << " " << m_norms.view_on(ttg::device::Device::host())(i)(0) << std::endl;
+            node.norms().view_on(ttg::device::Device::host()) = m_norms.view_on(ttg::device::Device::host())(i);
           }
         }
       }
@@ -100,7 +105,8 @@ namespace mra {
     private:
 
     public:
-      FunctionNorms(const detail::FunctionNodeBase<T, NDIM>& node)
+      template<typename NodeT, typename... NodeTs>
+      FunctionNorms(std::string name, NodeT&& node, NodeTs&&... nodes)
       { }
 
       auto buffer() {
@@ -119,7 +125,7 @@ namespace mra {
 
     // deduction guide
     template<typename NodeT, typename... NodeTs>
-    FunctionNorms(NodeT&&, NodeTs...) -> FunctionNorms<typename std::decay_t<NodeT>::value_type, std::decay_t<NodeT>::ndim()>;
+    FunctionNorms(std::string, NodeT&&, NodeTs...) -> FunctionNorms<typename std::decay_t<NodeT>::value_type, std::decay_t<NodeT>::ndim()>;
 
 } // namespace mra
 
