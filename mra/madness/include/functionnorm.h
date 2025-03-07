@@ -53,7 +53,7 @@ namespace mra {
         /* we will compute the norms in our local buffer */
         for (int i = 0; i < m_nodes.size(); ++i) {
           auto& node = *m_nodes[i];
-          if (m_initial[i] && !node.empty()){
+          if (!node.empty()){
             std::cout << "norm compute " << m_name << " " << i << " " << node.key() << std::endl;
             submit_simple_norm_kernel(node.key(), node.coeffs().current_view(), node.count(), m_norms.current_view()(i));
           }
@@ -73,10 +73,10 @@ namespace mra {
           auto& node = *m_nodes[i];
           if (node.empty()) continue;
           assert(node.norms().buffer().is_valid_on(ttg::device::Device::host()));
+          auto node_norms = node.norms().view_on(ttg::device::Device::host());
+          auto norm_view = norms_view(i);
           if (!m_initial[i]) {
             // verify the norms
-            auto node_norms = node.norms().view_on(ttg::device::Device::host());
-            auto norm_view = norms_view(i);
             for (size_type j = 0; j < node.count(); ++j) {
               std::cout << "norm verify " << m_name << " " << i << " " << node.key() << " expected " << norm_view(j) << " found " << node_norms(j) << std::endl;
               if (std::abs(node_norms(j) - norm_view(j)) > 1e-15) {
@@ -88,7 +88,9 @@ namespace mra {
           } else {
             // store the norm into the node
             std::cout << "norm verify-set " << m_name << " " << i << " " << node.key() << " " << m_norms.view_on(ttg::device::Device::host())(i)(0) << std::endl;
-            node.norms().view_on(ttg::device::Device::host()) = m_norms.view_on(ttg::device::Device::host())(i);
+            for (size_type j = 0; j < node.count(); ++j) {
+              node_norms(j) = norm_view(j);
+            }
           }
         }
       }
