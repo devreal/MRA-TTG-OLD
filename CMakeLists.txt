@@ -29,6 +29,13 @@ set(TTG_FETCH_BOOST OFF)
 set(TTG_PARSEC_USE_BOOST_SERIALIZATION OFF)
 set(TTG_EXAMPLES ON) # to pull in TA
 
+option(MRA_ENABLE_ASAN "Whether to enable address sanitizer" OFF)
+if (MRA_ENABLE_ASAN)
+    add_compile_options(-fsanitize=address)
+    add_link_options(-fsanitize=address)
+endif (MRA_ENABLE_ASAN)
+
+
 # disable tests, may want to re-enable later
 set(BUILD_TESTING OFF)
 
