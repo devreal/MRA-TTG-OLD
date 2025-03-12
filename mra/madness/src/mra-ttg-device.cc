@@ -142,6 +142,7 @@ auto make_project(
   #ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(is_leafs, result_norms.buffer());
   #endif
+	result_norms.verify(); // extracts the norms and stores them in the node
         const bool* is_leafs_arr = is_leafs.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
           result.is_leaf(i) = is_leafs_arr[i];
@@ -346,8 +347,8 @@ static auto make_compress(
                                    in4.sum(i), in5.sum(i), in6.sum(i), in7.sum(i)};
           auto child_sumsq = std::reduce(sumsqs.begin(), sumsqs.end());
           p.sum(i) = d_sumsq_arr[i] + child_sumsq; // result sumsq is last element in sumsqs
-          //std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq[i]
-          //          << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
+          std::cout << "compress " << key << " fn " << i << "/" << N << " d_sumsq " << d_sumsq_arr[i]
+                    << " child_sumsq " << child_sumsq << " sum " << p.sum(i) << std::endl;
         }
 
       }
@@ -475,6 +476,7 @@ auto make_reconstruct(
     auto inputs = make_inputs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
     inputs.add(from_parent.coeffs().buffer());
     inputs.add(node.coeffs().buffer());
+    inputs.add(norms.buffer());
     /* select a device */
     co_await ttg::device::select(inputs);
 #endif
@@ -607,6 +609,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       }
 #endif // 0
 
+      auto norms = FunctionNorms("gaxpy", out, t1, t2);
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer());
       if (!t1.empty()) {
@@ -615,6 +618,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       if (!t2.empty()) {
         input.add(t2.coeffs().buffer());
       }
+      input.add(norms.buffer());
       co_await ttg::device::select(input);
   #endif
       auto t1_view = t1.coeffs().current_view();
@@ -623,6 +627,11 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
 
       submit_gaxpy_kernel(key, t1_view, t2_view, out_view,
                           scalarA, scalarB, N, K, ttg::device::current_stream());
+      norms.compute();
+
+      co_await ttg::device::wait(norms.buffer());
+
+      norms.verify();
 
       send_out(std::move(out));
     }
@@ -724,10 +733,11 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
       auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
       auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+      auto norms = FunctionNorms("multiply", t1, t2, out);
 
   #ifndef MRA_ENABLE_HOST
       auto input = ttg::device::Input(out.coeffs().buffer(), phibar.buffer(), phiT.buffer(),
-                                      tmp_scratch);
+                                      tmp_scratch, norms.buffer());
       // if (!t1.empty()) {
       //   input.add(t1.coeffs().buffer());
       // }
@@ -748,6 +758,12 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
 
       submit_multiply_kernel(D, t1_view, t2_view, out_view, phiT_view, phibar_view,
                           N, K, key, tmp_device, ttg::device::current_stream());
+
+      norms.compute();
+
+      co_await ttg::device::wait(norms.buffer());
+
+      norms.verify();
 
       send_out(std::move(out));
     }

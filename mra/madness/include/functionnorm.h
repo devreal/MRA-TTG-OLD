@@ -81,7 +81,8 @@ namespace mra {
               std::cout << "norm verify " << m_name << " " << i << " " << node.key() << " expected " << norm_view(j) << " found " << node_norms(j) << std::endl;
               if (std::abs(node_norms(j) - norm_view(j)) > 1e-15) {
                 std::cerr << m_name << ": failed to verify norm for function " << j << " of " << node.key()
-                          << ": expected " << norm_view(j) << ", found " << node_norms(j) << std::endl;
+                          << ": expected " << node_norms(j) << ", found " << norm_view(j) << std::endl;
+                assert(std::abs(node_norms(j) - norm_view(j)) <= 1e-15);
                 throw std::runtime_error("Failed to verify norm!");
               }
             }
