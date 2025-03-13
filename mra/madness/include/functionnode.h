@@ -340,7 +340,7 @@ namespace mra {
         }
 
         FunctionsCompressedNode(const Key<NDIM>& key, size_type N, size_type K, ttg::scope scope = ttg::scope::SyncIn)
-        : base_type(key, N, 2*K)
+        : base_type(key, N, 2*K, scope)
         , m_is_child_leafs(N)
         { }
 
