@@ -21,12 +21,15 @@ using namespace mra; // we're lazy
 #ifdef MRA_ENABLE_HOST
 #define TASKTYPE void
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::Host;
+constexpr const static ttg::scope TempScope = ttg::scope::SyncIn;
 #elif defined(MRA_ENABLE_CUDA)
 #define TASKTYPE ttg::device::Task
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::CUDA;
+constexpr const static ttg::scope TempScope = ttg::scope::Allocate;
 #elif defined(MRA_ENABLE_HIP)
 #define TASKTYPE ttg::device::Task
 constexpr const ttg::ExecutionSpace Space = ttg::ExecutionSpace::HIP;
+constexpr const static ttg::scope TempScope = ttg::scope::Allocate;
 #endif
 
 
@@ -97,7 +100,7 @@ auto make_project(
          * TODO: figure out a way to outline this into a function or coroutine
          */
         // allocate tensor
-        result = node_type(key, N, K, ttg::scope::Allocate);
+        result = node_type(key, N, K, TempScope);
         tensor_type& coeffs = result.coeffs();
         auto result_norms = FunctionNorms("project", result);
 
@@ -107,20 +110,15 @@ auto make_project(
         const auto& hgT = functiondata.get_hgT();
 
         /* temporaries */
-        /* TODO: have make_scratch allocate pinned memory for us */
-#ifndef MRA_ENABLE_HOST
-        auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::Allocate);
-#else
-        auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::SyncIn); // always allocate on host
-#endif
+        auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, TempScope);
         const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
-        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
+        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
 
         /* TODO: cannot do this from a function, had to move it into the main task */
-  #ifndef MRA_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::select(db, gl, fb, coeffs.buffer(), phibar.buffer(),
                                     hgT.buffer(), tmp_scratch, result_norms.buffer(), is_leafs);
-  #endif
+#endif
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
@@ -138,10 +136,10 @@ auto make_project(
         result_norms.compute();
 
         /* wait and get is_leaf back */
-  #ifndef MRA_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(is_leafs, result_norms.buffer());
-  #endif
-	result_norms.verify(); // extracts the norms and stores them in the node
+#endif
+	      result_norms.verify(); // extracts the norms and stores them in the node
         const bool* is_leafs_arr = is_leafs.host_ptr();
         for (std::size_t i = 0; i < N; ++i) {
           result.is_leaf(i) = is_leafs_arr[i];
@@ -283,16 +281,12 @@ static auto make_compress(
 
         /* stores sumsq for each child and for result at the end of the kernel */
         const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
-        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
+        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
         const auto& hgT = functiondata.get_hgT();
 
         FunctionNorms<T, NDIM> norms("compress", in0, in1, in2, in3, in4, in5, in6, in7, result);
 
-#ifndef MRA_ENABLE_HOST
-        auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::Allocate);
-#else
-        auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, ttg::scope::SyncIn); // always allocate on host
-#endif
+        auto d_sumsq = ttg::Buffer<T, DeviceAllocator<T>>(N, TempScope);
 #ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(p.coeffs().buffer(), d.buffer(), hgT.buffer(),
                                         tmp_scratch, d_sumsq);
@@ -333,9 +327,9 @@ static auto make_compress(
         norms.compute();
 
         /* wait for kernel and transfer sums back */
-  #ifndef MRA_ENABLE_HOST
+#ifndef MRA_ENABLE_HOST
         co_await ttg::device::wait(d_sumsq, norms.buffer());
-  #endif
+#endif
 
         norms.verify();
 
@@ -397,7 +391,7 @@ auto make_reconstruct(
                                   const mra::FunctionsCompressedNode<T, NDIM>& node,
                                   const mra::FunctionsReconstructedNode<T, NDIM>& from_parent) -> TASKTYPE {
     const std::size_t tmp_size = reconstruct_tmp_size<NDIM>(K)*N;
-    ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
+    ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
     const auto& hg = functiondata.get_hg();
     mra::KeyChildren<NDIM> children(key);
 
@@ -591,7 +585,7 @@ auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>>
       send_out(t1);
     } else {
 
-      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
+      auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, TempScope);
       /* adapt the leaf information of the result: if the children of both nodes are leafs then
        * the children of the output node are leafs as well. */
 
@@ -728,7 +722,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       const auto& phibar = functiondata.get_phibar();
       const auto& phiT = functiondata.get_phiT();
       const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
-      ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
+      ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
       auto norms = FunctionNorms("multiply", t1, t2, out);
 
   #ifndef MRA_ENABLE_HOST
