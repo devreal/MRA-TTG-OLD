@@ -114,8 +114,7 @@ auto make_project(
         auto is_leafs = ttg::Buffer<bool, DeviceAllocator<bool>>(N, ttg::scope::SyncIn); // always allocate on host
 #endif
         const std::size_t tmp_size = fcoeffs_tmp_size<NDIM>(K)*N;
-        auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-        auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
 
         /* TODO: cannot do this from a function, had to move it into the main task */
   #ifndef MRA_ENABLE_HOST
@@ -125,7 +124,7 @@ auto make_project(
         auto coeffs_view = coeffs.current_view();
         auto phibar_view = phibar.current_view();
         auto hgT_view    = hgT.current_view();
-        T* tmp_device = tmp_scratch.device_ptr();
+        T* tmp_device = tmp_scratch.current_device_ptr();
         bool *is_leafs_device = is_leafs.current_device_ptr();
         auto *f_ptr   = fb.current_device_ptr();
         auto& domain = *db.current_device_ptr();
@@ -284,9 +283,8 @@ static auto make_compress(
 
         /* stores sumsq for each child and for result at the end of the kernel */
         const std::size_t tmp_size = compress_tmp_size<NDIM>(K)*N;
-        auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
         const auto& hgT = functiondata.get_hgT();
-        auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
 
         FunctionNorms<T, NDIM> norms("compress", in0, in1, in2, in3, in4, in5, in6, in7, result);
 
@@ -329,7 +327,7 @@ static auto make_compress(
         auto hgT_view = hgT.current_view();
 
         submit_compress_kernel(key, N, K, coeffs_view, rcoeffs_view, hgT_view,
-                              tmp_scratch.device_ptr(), d_sumsq.current_device_ptr(), input_views,
+                              tmp_scratch.current_device_ptr(), d_sumsq.current_device_ptr(), input_views,
                               ttg::device::current_stream());
 
         norms.compute();
@@ -399,9 +397,8 @@ auto make_reconstruct(
                                   const mra::FunctionsCompressedNode<T, NDIM>& node,
                                   const mra::FunctionsReconstructedNode<T, NDIM>& from_parent) -> TASKTYPE {
     const std::size_t tmp_size = reconstruct_tmp_size<NDIM>(K)*N;
-    auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+    ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
     const auto& hg = functiondata.get_hg();
-    auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
     mra::KeyChildren<NDIM> children(key);
 
     // Send empty interior node to result tree
@@ -490,7 +487,7 @@ auto make_reconstruct(
     auto hg_view = hg.current_view();
     auto from_parent_view = from_parent.coeffs().current_view();
     submit_reconstruct_kernel(key, N, K, node_view, hg_view, from_parent_view,
-                              r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
+                              r_ptrs, tmp_scratch.current_device_ptr(), ttg::device::current_stream());
 
     norms.compute();
 
@@ -731,8 +728,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       const auto& phibar = functiondata.get_phibar();
       const auto& phiT = functiondata.get_phiT();
       const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
-      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+      ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, ttg::scope::Allocate);
       auto norms = FunctionNorms("multiply", t1, t2, out);
 
   #ifndef MRA_ENABLE_HOST
@@ -754,7 +750,7 @@ auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, 
       auto phiT_view = phiT.current_view();
       auto phibar_view = phibar.current_view();
       auto& D = *db.current_device_ptr();
-      T* tmp_device = tmp_scratch.device_ptr();
+      T* tmp_device = tmp_scratch.current_device_ptr();
 
       submit_multiply_kernel(D, t1_view, t2_view, out_view, phiT_view, phibar_view,
                           N, K, key, tmp_device, ttg::device::current_stream());
