@@ -20,6 +20,7 @@
 #include "mra/misc/twoscale.h"
 #include "mra/misc/platform.h"
 #include "mra/misc/functiondata.h"
+#include "mra/misc/keymaps.h"
 
 #include "mra/ops/mxm.h"
 #include "mra/ops/inner.h"
@@ -32,6 +33,7 @@
 #include "mra/tensor/tensoriter.h"
 #include "mra/tensor/child_slice.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"

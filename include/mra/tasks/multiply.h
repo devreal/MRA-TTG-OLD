@@ -11,6 +11,7 @@
 #include "mra/tensor/tensor.h"
 #include "mra/tensor/tensorview.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"
 
@@ -18,13 +19,15 @@
 #include <ttg/serialization/std/array.h>
 
 namespace mra{
-  template<typename T, mra::Dimension NDIM>
+  template<typename T, mra::Dimension NDIM, typename ProcMap = ttg::Void, typename DeviceMap = ttg::Void>
   auto make_multiply(ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in1,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in2,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
                 const mra::FunctionData<T, NDIM>& functiondata,
                 const ttg::Buffer<mra::Domain<NDIM>>& db, const size_t N, const size_t K,
-                const char* name = "multiply")
+                const char* name = "multiply",
+                ProcMap procmap = {},
+                DeviceMap devicemap = {})
   {
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> S1, S2; // to balance trees
 
@@ -50,17 +53,17 @@ namespace mra{
         mra::apply_leaf_info(out, t1, t2);
         send_out(std::move(out));
       } else {
-        auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K);
+        auto out = mra::FunctionsReconstructedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
         mra::apply_leaf_info(out, t1, t2);
         const auto& phibar = functiondata.get_phibar();
         const auto& phiT = functiondata.get_phiT();
         const std::size_t tmp_size = multiply_tmp_size<NDIM>(K)*N;
-        auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
-        auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
+        ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
+        auto norms = FunctionNorms(name, t1, t2, out);
 
   #ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(out.coeffs().buffer(), phibar.buffer(), phiT.buffer(),
-                                        tmp_scratch);
+                                        tmp_scratch, norms.buffer());
         // if (!t1.empty()) {
         //   input.add(t1.coeffs().buffer());
         // }
@@ -77,10 +80,17 @@ namespace mra{
         auto phiT_view = phiT.current_view();
         auto phibar_view = phibar.current_view();
         auto& D = *db.current_device_ptr();
-        T* tmp_device = tmp_scratch.device_ptr();
+        T* tmp_device = tmp_scratch.current_device_ptr();
 
         submit_multiply_kernel(D, t1_view, t2_view, out_view, phiT_view, phibar_view,
                             N, K, key, tmp_device, ttg::device::current_stream());
+
+        norms.compute();
+#ifndef MRA_ENABLE_HOST
+        co_await ttg::device::wait(norms.buffer());
+#endif // MRA_ENABLE_HOST
+        norms.verify();
+
 
         send_out(std::move(out));
       }
@@ -90,11 +100,14 @@ namespace mra{
 #endif // MRA_ENABLE_HOST
     };
 
-    return ttg::make_tt<Space>(std::move(func),
-                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
-                              ttg::edges(out, S1, S2), name,
-                              {"in1", "in2"},
-                              {"out", "S1", "S2"});
+    auto tt = ttg::make_tt<Space>(std::move(func),
+                                  ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
+                                  ttg::edges(out, S1, S2), name,
+                                  {"in1", "in2"},
+                                  {"out", "S1", "S2"});
+    if constexpr (!std::is_same_v<ProcMap, ttg::Void>) tt.set_keymap(procmap);
+    if constexpr (!std::is_same_v<DeviceMap, ttg::Void>) tt.set_devicemap(devicemap);
+    return tt;
   }
 
 

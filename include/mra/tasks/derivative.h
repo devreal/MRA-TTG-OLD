@@ -11,6 +11,7 @@
 #include "mra/tensor/tensor.h"
 #include "mra/tensor/tensorview.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"
 
@@ -18,7 +19,7 @@
 #include <ttg/serialization/std/array.h>
 
 namespace mra{
-  template <typename T, Dimension NDIM>
+  template <typename T, Dimension NDIM, typename ProcMap = ttg::Void, typename DeviceMap = ttg::Void>
   auto make_derivative(size_type N, size_type K,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> in,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> result,
@@ -29,7 +30,9 @@ namespace mra{
                 const Dimension axis,
                 const int bc_left,
                 const int bc_right,
-                const std::string& name = "derivative")
+                const std::string& name = "derivative",
+                ProcMap&& procmap = {},
+                DeviceMap&& devicemap = {})
   {
     // TODO: we could generalize this to NDIM by using the tuple-based API
     static_assert(NDIM == 3, "Derivative currently only supported in 3D!");
@@ -40,7 +43,7 @@ namespace mra{
     constexpr static const int RIGHT = 2;
     constexpr static const int RESULT = RIGHT+1;
 
-    if (axis < 0 || axis >= NDIM) {
+    if (axis >= NDIM) {
       throw std::runtime_error("Invalid axis for derivative");
     }
 
@@ -227,8 +230,10 @@ namespace mra{
             const Tensor<T, 2>& phi= functiondata.get_phi();
             const Tensor<T, 1>& quad_x = functiondata.get_quad_x();
 
+            FunctionNorms<T, NDIM> norms(name, left, center, right);
+
 #ifndef MRA_ENABLE_HOST
-            co_await ttg::device::select(db, left.coeffs().buffer(), center.coeffs().buffer(),
+            co_await ttg::device::select(db, left.coeffs().buffer(), center.coeffs().buffer(), norms.buffer(),
                                         right.coeffs().buffer(), result.coeffs().buffer(), operators.buffer(),
                                         phibar.buffer(), phi.buffer(), quad_x.buffer(), tmp);
 #endif // MRA_ENABLE_HOST
@@ -239,6 +244,14 @@ namespace mra{
                                     center.coeffs().current_view(), right.coeffs().current_view(), operators.current_view(),
                                     result_view, phi.current_view(), phibar.current_view(), quad_x.current_view(),
                                     tmp.current_device_ptr(), N, K, g1, g2, axis, bc_left, bc_right, ttg::device::current_stream());
+
+            norms.compute();
+
+#if !defined(MRA_ENABLE_HOST) && defined(MRA_CHECK_NORMS)
+            co_await ttg::device::wait(norms.buffer());
+#endif // !defined(MRA_ENABLE_HOST) && defined(MRA_CHECK_NORMS)
+
+            norms.verify();
 
             do_send.template operator()<RESULT>(key, std::move(result));
           }
@@ -253,6 +266,16 @@ namespace mra{
                               ttg::edges(left, center, right),
                               ttg::edges(left, center, right, result),
                               name);
+
+    // set maps if provided
+    if constexpr (!std::is_same_v<ProcMap, ttg::Void>) {
+      deriv_tt->set_keymap(procmap);
+      dispatch_tt->set_keymap(procmap);
+    }
+    if constexpr (!std::is_same_v<DeviceMap, ttg::Void>) {
+      deriv_tt->set_devicemap(devicemap);
+      dispatch_tt->set_devicemap(devicemap);
+    }
 
     return std::make_tuple(std::move(deriv_tt),
                            std::move(dispatch_tt));

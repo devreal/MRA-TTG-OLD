@@ -11,6 +11,7 @@
 #include "mra/tensor/tensor.h"
 #include "mra/tensor/tensorview.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"
 
@@ -18,14 +19,16 @@
 #include <ttg/serialization/std/array.h>
 
 namespace mra{
-  template <typename T, mra::Dimension NDIM>
+  template <typename T, mra::Dimension NDIM, typename ProcMap = ttg::Void, typename DeviceMap = ttg::Void>
   auto make_reconstruct(
     const std::size_t N,
     const std::size_t K,
     const mra::FunctionData<T, NDIM>& functiondata,
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in,
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T, NDIM>> out,
-    const char* name = "reconstruct")
+    const char* name = "reconstruct",
+    ProcMap procmap = {},
+    DeviceMap devicemap = {})
   {
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsReconstructedNode<T,NDIM>> S("S");  // passes scaling functions down
 
@@ -33,9 +36,8 @@ namespace mra{
                                     const mra::FunctionsCompressedNode<T, NDIM>& node,
                                     const mra::FunctionsReconstructedNode<T, NDIM>& from_parent) -> TASKTYPE {
       const std::size_t tmp_size = reconstruct_tmp_size<NDIM>(K)*N;
-      auto tmp = std::make_unique_for_overwrite<T[]>(tmp_size);
+      ttg::Buffer<T, DeviceAllocator<T>> tmp_scratch(tmp_size, TempScope);
       const auto& hg = functiondata.get_hg();
-      auto tmp_scratch = ttg::make_scratch(tmp.get(), ttg::scope::Allocate, tmp_size);
       mra::KeyChildren<NDIM> children(key);
 
       // Send empty interior node to result tree
@@ -94,10 +96,13 @@ namespace mra{
       *       we may have to consolidate the r's into a single buffer and pick them apart afterwards.
       *       That will require the ability to ref-count 'parent buffers'. */
       for (int i = 0; i < key.num_children(); ++i) {
-        r_arr[i].allocate(K);
-        // no need to send this data to the device
-        r_arr[i].coeffs().buffer().reset_scope(ttg::scope::Allocate);
+        r_arr[i].allocate(K, ttg::scope::Allocate);
       }
+
+      // compute norms
+      auto norms = [&]<std::size_t... Is>(std::index_sequence<Is...>){
+        return FunctionNorms(name, node, from_parent, r_arr[Is]...);
+      }(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
 
 #ifndef MRA_ENABLE_HOST
       // helper lambda to pick apart the std::array
@@ -106,12 +111,9 @@ namespace mra{
                                   (r_arr[Is].coeffs().buffer())...);
       };
       auto inputs = make_inputs(std::make_index_sequence<mra::Key<NDIM>::num_children()>{});
-      if (!from_parent.empty()) {
-        inputs.add(from_parent.coeffs().buffer());
-      }
-      if (!node.empty()) {
-        inputs.add(node.coeffs().buffer());
-      }
+      inputs.add(from_parent.coeffs().buffer());
+      inputs.add(node.coeffs().buffer());
+      inputs.add(norms.buffer());
       /* select a device */
       co_await ttg::device::select(inputs);
 #endif
@@ -125,7 +127,16 @@ namespace mra{
       auto hg_view = hg.current_view();
       auto from_parent_view = from_parent.coeffs().current_view();
       submit_reconstruct_kernel(key, N, K, node_view, hg_view, from_parent_view,
-                                r_ptrs, tmp_scratch.device_ptr(), ttg::device::current_stream());
+                                r_ptrs, tmp_scratch.current_device_ptr(), ttg::device::current_stream());
+
+#ifdef MRA_CHECK_NORMS
+      norms.compute();
+#ifndef MRA_ENABLE_HOST
+    /* wait for norms to come back and verify */
+      co_await ttg::device::wait(norms.buffer());
+#endif // MRA_ENABLE_HOST
+      norms.verify();
+#endif // MRA_CHECK_NORMS
 
       for (auto it=children.begin(); it!=children.end(); ++it) {
         const mra::Key<NDIM> child= *it;
@@ -144,6 +155,9 @@ namespace mra{
 
 
     auto s = ttg::make_tt<Space>(std::move(do_reconstruct), ttg::edges(in, S), ttg::edges(S, out), name, {"input", "s"}, {"s", "output"});
+
+    if constexpr (!std::is_same_v<ProcMap, ttg::Void>) s->set_keymap(procmap);
+    if constexpr (!std::is_same_v<DeviceMap, ttg::Void>) s->set_devicemap(devicemap);
 
     if (ttg::default_execution_context().rank() == 0) {
       s->template in<1>()->send(mra::Key<NDIM>{0,{0}},

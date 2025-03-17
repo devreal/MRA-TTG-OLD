@@ -11,6 +11,7 @@
 #include "mra/tensor/tensor.h"
 #include "mra/tensor/tensorview.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"
 
@@ -18,11 +19,13 @@
 #include <ttg/serialization/std/array.h>
 
 namespace mra{
-  template <typename T, Dimension NDIM>
+  template <typename T, Dimension NDIM, typename ProcMap = ttg::Void, typename DeviceMap = ttg::Void>
   auto make_norm(size_type N, size_type K,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> input,
                 ttg::Edge<mra::Key<NDIM>, mra::Tensor<T, 1>> result,
-                const char* name = "norm") {
+                const char* name = "norm",
+                ProcMap procmap = {},
+                DeviceMap devicemap = {}) {
     static_assert(NDIM == 3); // TODO: worth fixing?
     using norm_tensor_type = mra::Tensor<T, 1>;
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> node_e;
@@ -45,9 +48,10 @@ namespace mra{
       // TODO: pass ttg::scope::Allocate once that's possible
       // TODO: reuse of one of the input norms?
       auto norms_result = norm_tensor_type(N);
+      auto fnnorms = FunctionNorms(name, norm0, norm1, norm2, norm3, norm4, norm5, norm6, norm7);
       //std::cout << name << " " << key << std::endl;
 #ifndef MRA_ENABLE_HOST
-      co_await ttg::device::select(norms_result.buffer(), in.coeffs().buffer(),
+      co_await ttg::device::select(norms_result.buffer(), in.coeffs().buffer(), fnnorms.buffer(),
                                   norm0.buffer(), norm1.buffer(), norm2.buffer(), norm3.buffer(),
                                   norm4.buffer(), norm5.buffer(), norm6.buffer(), norm7.buffer());
 #endif // MRA_ENABLE_HOST
@@ -59,6 +63,12 @@ namespace mra{
           norm4.buffer().current_device_ptr(), norm5.buffer().current_device_ptr(),
           norm6.buffer().current_device_ptr(), norm7.buffer().current_device_ptr()};
       submit_norm_kernel(key, N, K, node_view, norm_result_view, child_norms, ttg::device::current_stream());
+
+      fnnorms.compute();
+#ifndef MRA_ENABLE_HOST
+      co_await ttg::device::wait(fnnorms.buffer());
+#endif // MRA_ENABLE_HOST
+      fnnorms.verify();
 
 #ifndef MRA_ENABLE_HOST
       if (key.level() == 0) {
@@ -132,6 +142,16 @@ namespace mra{
                                           ttg::edges(norm_e0, norm_e1, norm_e2, norm_e3,
                                                       norm_e4, norm_e5, norm_e6, norm_e7, node_e),
                                           "norm-dispatch");
+
+    // set maps if provided
+    if constexpr (!std::is_same_v<ProcMap, ttg::Void>) {
+      norm_tt->set_keymap(procmap);
+      dispatch_tt->set_keymap(procmap);
+    }
+    if constexpr (!std::is_same_v<DeviceMap, ttg::Void>) {
+      norm_tt->set_devicemap(devicemap);
+      dispatch_tt->set_devicemap(devicemap);
+    }
     /* compile everything into tasks */
     return std::make_tuple(std::move(norm_tt),
                           std::move(dispatch_tt));

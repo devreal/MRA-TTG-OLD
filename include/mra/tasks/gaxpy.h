@@ -12,6 +12,7 @@
 #include "mra/tensor/tensor.h"
 #include "mra/tensor/tensorview.h"
 #include "mra/tensor/functionnode.h"
+#include "mra/tensor/functionnorm.h"
 #include "mra/functors/gaussian.h"
 #include "mra/functors/functionfunctor.h"
 
@@ -19,12 +20,14 @@
 #include <ttg/serialization/std/array.h>
 
 namespace mra{
-  template<typename T, mra::Dimension NDIM>
+  template<typename T, mra::Dimension NDIM, typename ProcMap = ttg::Void, typename DeviceMap = ttg::Void>
   auto make_gaxpy(ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in1,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> in2,
                 ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> out,
                 const T scalarA, const T scalarB, const size_t N, const size_t K,
-                const char* name = "gaxpy")
+                const char* name = "gaxpy",
+                ProcMap procmap = {},
+                DeviceMap devicemap = {})
   {
     ttg::Edge<mra::Key<NDIM>, mra::FunctionsCompressedNode<T, NDIM>> S1, S2; // to balance trees
 
@@ -64,11 +67,10 @@ namespace mra{
         send_out(t1);
       } else {
 
-        auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K);
-        out.coeffs().buffer().reset_scope(ttg::scope::Allocate);
+        auto out = mra::FunctionsCompressedNode<T, NDIM>(key, N, K, ttg::scope::Allocate);
+
         /* adapt the leaf information of the result: if the children of both nodes are leafs then
         * the children of the output node are leafs as well. */
-
         mra::apply_leaf_info(out, t1, t2);
         //std::cout << name << " " << key << " all leafs " << out.is_all_child_leaf() << std::endl;
 #if 0
@@ -80,7 +82,9 @@ namespace mra{
         }
 #endif // 0
 
-  #ifndef MRA_ENABLE_HOST
+        auto norms = FunctionNorms(name, out, t1, t2);
+
+#ifndef MRA_ENABLE_HOST
         auto input = ttg::device::Input(out.coeffs().buffer());
         if (!t1.empty()) {
           input.add(t1.coeffs().buffer());
@@ -88,14 +92,23 @@ namespace mra{
         if (!t2.empty()) {
           input.add(t2.coeffs().buffer());
         }
+        input.add(norms.buffer());
         co_await ttg::device::select(input);
-  #endif
+#endif
         auto t1_view = t1.coeffs().current_view();
         auto t2_view = t2.coeffs().current_view();
         auto out_view = out.coeffs().current_view();
 
         submit_gaxpy_kernel(key, t1_view, t2_view, out_view,
                             scalarA, scalarB, N, K, ttg::device::current_stream());
+
+        norms.compute();
+
+#ifndef MRA_ENABLE_HOST
+        co_await ttg::device::wait(norms.buffer());
+#endif // MRA_ENABLE_HOST
+
+        norms.verify();
 
         send_out(std::move(out));
       }
@@ -151,11 +164,15 @@ namespace mra{
 #endif // MRA_ENABLE_HOST
     };
 
-    return ttg::make_tt<Space>(std::move(func),
-                              ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
-                              ttg::edges(out, S1, S2), name,
-                              {"in1", "in2"},
-                              {"out", "S1", "S2"});
+    auto tt = ttg::make_tt<Space>(std::move(func),
+                                  ttg::edges(ttg::fuse(S1, in1), ttg::fuse(S2, in2)),
+                                  ttg::edges(out, S1, S2), name,
+                                  {"in1", "in2"},
+                                  {"out", "S1", "S2"});
+
+    if constexpr (!std::is_same_v<ProcMap, ttg::Void>) tt->set_keymap(procmap);
+    if constexpr (!std::is_same_v<DeviceMap, ttg::Void>) tt->set_devicemap(devicemap);
+    return tt;
 }
 
   template<typename T, mra::Dimension NDIM>

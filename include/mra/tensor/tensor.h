@@ -8,13 +8,13 @@
 #include <ttg.h>
 #include <ttg/serialization.h>
 #include <ttg/serialization/std/array.h>
-#include <madness/world/world.h>
 
+#include "mra/misc/allocator.h"
 #include "mra/tensor/tensorview.h"
 
 namespace mra {
 
-  template<typename T, Dimension NDIM, class Allocator = std::allocator<T>>
+  template<typename T, Dimension NDIM, class Allocator = DeviceAllocator<T>>
   class Tensor : public ttg::TTValue<Tensor<T, NDIM, Allocator>> {
   public:
     using value_type = std::decay_t<T>;
@@ -51,7 +51,7 @@ namespace mra {
     Tensor() = default;
 
     /* generic */
-    explicit Tensor(size_type dim)
+    explicit Tensor(size_type dim, ttg::scope scope = ttg::scope::SyncIn)
     : ttvalue_type()
     , m_dims(create_dims_array(dim, std::make_index_sequence<NDIM>{}))
     , m_buffer(size())
@@ -67,10 +67,10 @@ namespace mra {
                     "Number of arguments does not match number of Dimensions.");
     }
 
-    Tensor(const std::array<size_type, NDIM>& dims)
+    Tensor(const std::array<size_type, NDIM>& dims, ttg::scope scope = ttg::scope::SyncIn)
     : ttvalue_type()
     , m_dims(dims)
-    , m_buffer(size())
+    , m_buffer(size(), scope)
     {
       // TODO: make this static_assert (clang 14 doesn't get it)
       assert(dims.size() == NDIM);
@@ -127,6 +127,18 @@ namespace mra {
      * TODO: handle const correctness (const Tensor should return a const TensorView)*/
     const view_type current_view() const {
       return view_type(m_buffer.current_device_ptr(), m_dims);
+    }
+
+    /* returns a view for the current memory space
+     * TODO: handle const correctness (const Tensor should return a const TensorView)*/
+    view_type view_on(const ttg::device::Device& device) {
+      return view_type(m_buffer.device_ptr_on(device), m_dims);
+    }
+
+    /* returns a view for the current memory space
+     * TODO: handle const correctness (const Tensor should return a const TensorView)*/
+    const view_type view_on(const ttg::device::Device& device) const {
+      return view_type(m_buffer.device_ptr_on(device), m_dims);
     }
 
     bool empty() const {
