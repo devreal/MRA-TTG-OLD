@@ -15,8 +15,17 @@ namespace mra {
     const TensorView<T, NDIM>& t,
     const TensorView<T, 2>& c,
     TensorView<T, NDIM>& result,
-    T* workspace) {
+    T* workspace)
+  {
     const T* pc = c.data();
+#ifndef MRA_ENABLE_HOST
+    // copy c to shared memory
+    SHARED T c_tmp[MAX_THREADS_PER_BLOCK];
+    if (thread_id() < c.size()) c_tmp[thread_id()] = pc[thread_id()];
+    SYNCTHREADS();
+    pc = c_tmp;
+#endif
+
     T *t0=workspace, *t1=result.data();
     if (t.ndim() & 0x1) std::swap(t0,t1);
     const size_type dimj = c.dim(1);

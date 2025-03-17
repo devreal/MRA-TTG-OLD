@@ -6,6 +6,61 @@
 
 namespace mra{
 
+
+  namespace detail {
+    /* mTxm that blocks on A (i.e., dimi is the largest dimension )*/
+    template <typename aT, typename bT, typename cT, bool Q = false>
+    SCOPE bool mTxm_block_a(size_type dimi, size_type dimj, size_type dimk,
+                            cT* __restrict__ c, const aT* a, const bT* b) {
+
+      if (dimk != blockDim.x || dimj != blockDim.x) {
+        /* Required: dimj and dimk must match thread X dimension */
+        return false;
+      }
+      SHARED aT block_a[MAX_THREADS_PER_BLOCK];
+      size_type a_block_dimi;
+      a_block_dimi = block_size() / dimk;
+
+      auto tid = thread_id();
+      /* A is transposed and we want to coalesce in dimi */
+      auto a_trans_i = tid % a_block_dimi; // index in transposed block A(k, i)
+      auto a_trans_k = tid / a_block_dimi;
+      auto a_block_i = a_trans_k; // index in non-transposed block_a(i, k)
+      auto a_block_k = a_trans_i;
+      for (size_type i = 0; i < dimi; i += a_block_dimi) {
+
+        if (i+a_trans_i < dimi) { /* in case dimi is not a multiple of Y*Z */
+          /* transpose block of A into shared memory */
+          block_a[a_block_i*dimk + a_block_k] = a[a_trans_k*dimi + i+a_block_i];
+        }
+
+        /* make sure the block is written */
+        SYNCTHREADS();
+
+        if (i+a_block_i < dimi) { /* in case dimi is not a multiple of Y*Z */
+          /* C is not transposed so use block_i */
+          size_type c_idx = (i+a_block_i)*dimj + threadIdx.x;
+          cT sum = 0.0;
+          /* k is not parallel */
+          const aT* a_ik = &block_a[(threadIdx.z*blockDim.y+threadIdx.y)*dimk];
+          for (size_type k = 0; k < dimk; ++k) {
+            sum += a_ik[k] * b[k*dimj + threadIdx.x];
+          }
+          if constexpr (Q) {
+            c[c_idx] += sum;
+          } else {
+            c[c_idx] = sum;
+          }
+        }
+
+        /* synchronize before entering next iteration or completing */
+        SYNCTHREADS();
+      }
+      return true;
+    }
+  } // namespace detail
+
+
   /**
    * reference implementation, adapted from madness
    * c(i,j) += sum(k) a(k,i)*b(k,j)
@@ -14,6 +69,11 @@ namespace mra{
   SCOPE void mTxm(size_type dimi, size_type dimj, size_type dimk,
           cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
     if (ldb == -1) ldb=dimj;
+    if (ldb == dimj && mTxm_block_a(dimi, dimj, dimk, c, a, b)) {
+      return; // succesfully blocked on A
+    }
+    /* TODO: block on B */
+
     /* trivial 2D implementation for devices */
     if (threadIdx.z == 0) {
       for (size_type i = threadIdx.y; i < dimi; i += blockDim.y) {
