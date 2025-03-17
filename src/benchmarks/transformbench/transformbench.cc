@@ -13,7 +13,7 @@ using namespace mra; // lazy
 template<typename T>
 static
 LAUNCH_BOUNDS(MAX_THREADS_PER_BLOCK)
-GLOBALSCOPE void transform_kernel(int nrep, TensorView<T, 3+1> A, TensorView<T, 2+1> B, TensorView<T, 3+1> C, TensorView<T, 3+1> workspace) {
+GLOBALSCOPE void transform_kernel(TensorView<T, 3+1> A, TensorView<T, 2+1> B, TensorView<T, 3+1> C, TensorView<T, 3+1> workspace) {
 
   SHARED TensorView<T, 3> a, c, w;
   SHARED TensorView<T, 2> b;
@@ -24,9 +24,8 @@ GLOBALSCOPE void transform_kernel(int nrep, TensorView<T, 3+1> A, TensorView<T, 
     w = workspace(blockIdx.x);
   }
   SYNCTHREADS();
-  for (int i = 0; i < nrep; i++) {
-    transform(a, b, c, w.data());
-  }
+
+  transform(a, b, c, w.data());
 #if 0
   T* pc = c.data();
   const T* pb = b.data();
@@ -41,9 +40,9 @@ GLOBALSCOPE void transform_kernel(int nrep, TensorView<T, 3+1> A, TensorView<T, 
 }
 
 template<typename T>
-static void submit_transform_bench(int N, int K, int nrep, TensorView<T, 3+1> A, TensorView<T, 2+1> B, TensorView<T, 3+1> C, TensorView<T, 3+1> workspace) {
+static void submit_transform_bench(int N, int K, TensorView<T, 3+1> A, TensorView<T, 2+1> B, TensorView<T, 3+1> C, TensorView<T, 3+1> workspace) {
   Dim3 thread_dims = max_thread_dims(K);
-  CALL_KERNEL(transform_kernel, N, thread_dims, 0, stream, (nrep, A, B, C, workspace));
+  CALL_KERNEL(transform_kernel, N, thread_dims, 0, ttg::device::current_stream(), (A, B, C, workspace));
   checkSubmit();
 }
 
@@ -54,8 +53,13 @@ int main(int argc, char **argv) {
   int nblocks = opt.parse("-N", 10);
   int K = opt.parse("-K", 10);
   ttg::initialize(argc, argv);
-  //ttg::Edge<void, void> e; // control edge
-  auto tt = ttg::make_tt<Space>([&]() -> TASKTYPE {
+  ttg::Edge<int, void> e; // control edge
+  auto start = ttg::make_tt([&](){
+    for (int i = 0; i < nreps; i++) {
+      ttg::sendk<0>(i);
+    }
+  }, ttg::edges(), ttg::edges(e));
+  auto tt = ttg::make_tt<Space>([&](const int& key) -> TASKTYPE {
     auto a = Tensor<double, 3+1>(nblocks, K, K, K); // nblocks x size^3 elements
     auto b = Tensor<double, 2+1>(nblocks, K, K); // size^2 elements
     auto c = Tensor<double, 3+1>(nblocks, K, K, K); // size^3 elements
@@ -63,16 +67,16 @@ int main(int argc, char **argv) {
 #ifndef MRA_ENABLE_HOST
     co_await ttg::device::select(a.buffer(), b.buffer(), c.buffer(), workspace.buffer());
 #endif // MRA_ENABLE_HOST
-    submit_transform_bench(nblocks, K, nreps, a.current_view(), b.current_view(), c.current_view(), workspace.current_view());
-  }, ttg::edges(), ttg::edges());
+    submit_transform_bench(nblocks, K, a.current_view(), b.current_view(), c.current_view(), workspace.current_view());
+  }, ttg::edges(e), ttg::edges());
 
-  auto connected = ttg::make_graph_executable(tt.get());
+  auto connected = ttg::make_graph_executable(start.get());
   assert(connected);
 
 
   std::chrono::time_point<std::chrono::high_resolution_clock> beg, end;
   beg = std::chrono::high_resolution_clock::now();
-  tt->invoke(); // kick off
+  start->invoke(); // kick off
   ttg::execute();
   ttg::fence();
   end = std::chrono::high_resolution_clock::now();
@@ -80,7 +84,8 @@ int main(int argc, char **argv) {
   auto time = (std::chrono::duration_cast<std::chrono::microseconds>(end - beg).count()) / 1000;
   std::cout << "TTG Execution Time (milliseconds) : "
             << time
-            << "; Gflops: " << (1e-6 * nreps * K * K * K * K * nblocks) / time
+            << "; Flops: " << nreps * K * K * K * K * 3 * nblocks
+            << "; Gflop/s: " << (1e-6 * nreps * K * K * K * K * 3 * nblocks) / time
             << std::endl;
   ttg::finalize();
 }
