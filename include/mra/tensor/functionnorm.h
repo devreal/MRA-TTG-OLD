@@ -106,11 +106,15 @@ namespace mra {
       using value_type = T;
 
     private:
-      static const ttg::Buffer<value_type> empty_buffer;
+      static inline const ttg::Buffer<value_type> empty_buffer;
 
     public:
       template<typename NodeT, typename... NodeTs>
-      FunctionNorms(std::string name, NodeT&& node, NodeTs&&... nodes)
+      FunctionNorms(const std::string& name, NodeT&& node, NodeTs&&... nodes)
+      { }
+
+      template<typename NodeT, typename... NodeTs>
+      FunctionNorms(const char* name, NodeT&& node, NodeTs&&... nodes)
       { }
 
       auto& buffer() {
