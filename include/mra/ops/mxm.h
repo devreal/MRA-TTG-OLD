@@ -13,38 +13,32 @@ namespace mra{
     SCOPE bool mTxm_block_a(size_type dimi, size_type dimj, size_type dimk,
                             cT* __restrict__ c, const aT* a, const bT* b) {
 
-      if (dimk != blockDim.x || dimj != blockDim.x) {
-        /* Required: dimj and dimk must match thread X dimension */
-        return false;
-      }
+      auto tid = thread_id();
       SHARED aT block_a[MAX_THREADS_PER_BLOCK];
       size_type a_block_dimi;
       a_block_dimi = block_size() / dimk;
 
-      auto tid = thread_id();
       /* A is transposed and we want to coalesce in dimi */
       auto a_trans_i = tid % a_block_dimi; // index in transposed block A(k, i)
       auto a_trans_k = tid / a_block_dimi;
-      auto a_block_i = a_trans_k; // index in non-transposed block_a(i, k)
-      auto a_block_k = a_trans_i;
       for (size_type i = 0; i < dimi; i += a_block_dimi) {
 
-        if (i+a_trans_i < dimi) { /* in case dimi is not a multiple of Y*Z */
+        if (i+a_trans_i < dimi && threadIdx.x < dimj) { /* in case dimi is not a multiple of Y*Z */
           /* transpose block of A into shared memory */
-          block_a[a_block_i*dimk + a_block_k] = a[a_trans_k*dimi + i+a_block_i];
+          block_a[a_trans_k*a_block_dimi + a_trans_i] = a[a_trans_k*dimi + i+a_trans_i];
         }
 
         /* make sure the block is written */
         SYNCTHREADS();
 
-        if (i+a_block_i < dimi) { /* in case dimi is not a multiple of Y*Z */
-          /* C is not transposed so use block_i */
-          size_type c_idx = (i+a_block_i)*dimj + threadIdx.x;
+        if (i+a_trans_i < dimi && threadIdx.x < dimj) { /* in case dimi is not a multiple of Y*Z */
+          size_type c_idx = (i+(threadIdx.z*blockDim.y+threadIdx.y))*dimj + threadIdx.x; // works!
           cT sum = 0.0;
           /* k is not parallel */
-          const aT* a_ik = &block_a[(threadIdx.z*blockDim.y+threadIdx.y)*dimk];
           for (size_type k = 0; k < dimk; ++k) {
-            sum += a_ik[k] * b[k*dimj + threadIdx.x];
+            aT a_ = block_a[k*a_block_dimi+(threadIdx.z*blockDim.y+threadIdx.y)];
+            bT b_ = b[k*dimj + threadIdx.x];
+            sum += a_ * b_;
           }
           if constexpr (Q) {
             c[c_idx] += sum;
@@ -69,7 +63,7 @@ namespace mra{
   SCOPE void mTxm(size_type dimi, size_type dimj, size_type dimk,
           cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
     if (ldb == -1) ldb=dimj;
-    if (ldb == dimj && mTxm_block_a(dimi, dimj, dimk, c, a, b)) {
+    if (ldb == dimj && detail::mTxm_block_a(dimi, dimj, dimk, c, a, b)) {
       return; // succesfully blocked on A
     }
     /* TODO: block on B */
@@ -109,27 +103,9 @@ namespace mra{
   SCOPE
   void mTxmq(size_type dimi, size_type dimj, size_type dimk,
             cT* __restrict__ c, const aT* a, const bT* b, std::ptrdiff_t ldb=-1) {
-    if (ldb == -1) ldb=dimj;
-    /* 3D implementation utilizing the tall-and-skinny shape of a(i,k) and c(i,j) (see transform() below).
-    * We distribute work along the i-dimension across the Y and Z dimensions of the thread-block.
-    * The X dimension of the thread-block computes along the j dimension. The k dimension is not parallelized
-    * as it would require reductions (could be added later for square matrices). */
-    for (size_type i = threadIdx.z*blockDim.y+threadIdx.y; i < dimi; i += blockDim.z*blockDim.y) {
-      cT* ci = c + i*dimj; // the row of C all threads in dim x work on
-      const aT *aik_ptr = a + i;
-      // beta = 0
-      for (size_type j = threadIdx.x; j < dimj; j += blockDim.x) {
-        ci[j] = 0.0;
-      }
 
-      for (long k=0; k<dimk; ++k,aik_ptr+=dimi) { /* not parallelized */
-        aT aki = *aik_ptr;
-        for (size_type j = threadIdx.x; j < dimj; j += blockDim.x) {
-          ci[j] += aki*b[k*ldb+j];
-        }
-      }
-    }
-    SYNCTHREADS();
+    if (ldb == -1) ldb=dimj;
+    mTxm<aT, bT, cT, true>(dimi, dimj, dimk, c, a, b, ldb);
   }
 
   /**
